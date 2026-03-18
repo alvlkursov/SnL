@@ -1,0 +1,27 @@
+kind = "mobile"
+previewPath = "/"
+title = "WakeOrDonate"
+version = "1.0.0"
+id = "artifacts/wake-or-donate"
+router = "expo-domain"
+
+[[integratedSkills]]
+name = "expo"
+version = "1.0.0"
+
+[[services]]
+ensurePreviewReachable = "/status"
+localPort = 24228
+name = "expo"
+paths = ["/"]
+
+[services.development]
+run = "pnpm --filter @workspace/wake-or-donate run dev"
+
+[services.env]
+PORT = "24228"
+BASE_PATH = "/"
+
+[services.production]
+build = ["pnpm", "--filter", "@workspace/wake-or-donate", "run", "build"]
+run = ["pnpm", "--filter", "@workspace/wake-or-donate", "run", "serve"]

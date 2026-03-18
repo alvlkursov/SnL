@@ -1,22 +1,28 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: WakeOrDonate API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication
+  - name: alarms
+    description: Alarm management
+  - name: charities
+    description: Charity funds management
+  - name: payments
+    description: Payment and donation management
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +30,251 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterRequest"
+      responses:
+        "201":
+          description: User registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: Email already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get current user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Logout
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /alarms:
+    get:
+      operationId: getAlarms
+      tags: [alarms]
+      summary: Get user alarms
+      responses:
+        "200":
+          description: List of alarms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Alarm"
+    post:
+      operationId: createAlarm
+      tags: [alarms]
+      summary: Create alarm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAlarmRequest"
+      responses:
+        "201":
+          description: Alarm created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alarm"
+
+  /alarms/{id}:
+    put:
+      operationId: updateAlarm
+      tags: [alarms]
+      summary: Update alarm
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAlarmRequest"
+      responses:
+        "200":
+          description: Alarm updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Alarm"
+    delete:
+      operationId: deleteAlarm
+      tags: [alarms]
+      summary: Delete alarm
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Alarm deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessResponse"
+
+  /alarms/{id}/dismiss:
+    post:
+      operationId: dismissAlarm
+      tags: [alarms]
+      summary: Dismiss alarm (confirm wakeup)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Alarm dismissed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlarmDismissResult"
+
+  /alarms/{id}/snooze:
+    post:
+      operationId: snoozeAlarm
+      tags: [alarms]
+      summary: Snooze alarm (triggers donation)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Alarm snoozed and donation triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AlarmDismissResult"
+
+  /charities:
+    get:
+      operationId: getCharities
+      tags: [charities]
+      summary: Get all charities
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [favorite, recommended, hated]
+      responses:
+        "200":
+          description: List of charities
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Charity"
+
+  /donations:
+    get:
+      operationId: getDonations
+      tags: [payments]
+      summary: Get user donation history
+      responses:
+        "200":
+          description: Donation history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Donation"
+
+  /donations/stats:
+    get:
+      operationId: getDonationStats
+      tags: [payments]
+      summary: Get donation statistics
+      responses:
+        "200":
+          description: Donation stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DonationStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +285,312 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+      required:
+        - success
+
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+        name:
+          type: string
+      required:
+        - email
+        - password
+        - name
+
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        paypalEmail:
+          type: string
+          nullable: true
+        totalDonated:
+          type: number
+        alarmsTriggered:
+          type: integer
+        alarmsDismissed:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - email
+        - name
+        - totalDonated
+        - alarmsTriggered
+        - alarmsDismissed
+        - createdAt
+
+    AuthResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        token:
+          type: string
+      required:
+        - user
+        - token
+
+    Alarm:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        label:
+          type: string
+        time:
+          type: string
+          description: "HH:mm format"
+        days:
+          type: array
+          items:
+            type: integer
+            minimum: 0
+            maximum: 6
+        isEnabled:
+          type: boolean
+        donationAmount:
+          type: number
+        charityId:
+          type: integer
+          nullable: true
+        charityCategory:
+          type: string
+          enum: [favorite, recommended, hated]
+          nullable: true
+        confirmationMethod:
+          type: string
+          enum: [button, math, shake, qr]
+        snoozeEnabled:
+          type: boolean
+        snoozeCount:
+          type: integer
+        snoozeDurationMinutes:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - label
+        - time
+        - days
+        - isEnabled
+        - donationAmount
+        - confirmationMethod
+        - snoozeEnabled
+        - snoozeCount
+        - snoozeDurationMinutes
+        - createdAt
+
+    CreateAlarmRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        time:
+          type: string
+        days:
+          type: array
+          items:
+            type: integer
+        donationAmount:
+          type: number
+        charityId:
+          type: integer
+          nullable: true
+        charityCategory:
+          type: string
+          enum: [favorite, recommended, hated]
+        confirmationMethod:
+          type: string
+          enum: [button, math, shake, qr]
+        snoozeEnabled:
+          type: boolean
+        snoozeDurationMinutes:
+          type: integer
+      required:
+        - label
+        - time
+        - days
+        - donationAmount
+        - charityCategory
+        - confirmationMethod
+        - snoozeEnabled
+        - snoozeDurationMinutes
+
+    UpdateAlarmRequest:
+      type: object
+      properties:
+        label:
+          type: string
+        time:
+          type: string
+        days:
+          type: array
+          items:
+            type: integer
+        isEnabled:
+          type: boolean
+        donationAmount:
+          type: number
+        charityId:
+          type: integer
+          nullable: true
+        charityCategory:
+          type: string
+          enum: [favorite, recommended, hated]
+        confirmationMethod:
+          type: string
+          enum: [button, math, shake, qr]
+        snoozeEnabled:
+          type: boolean
+        snoozeDurationMinutes:
+          type: integer
+
+    AlarmDismissResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        donated:
+          type: boolean
+        donationAmount:
+          type: number
+          nullable: true
+        charityName:
+          type: string
+          nullable: true
+        message:
+          type: string
+      required:
+        - success
+        - donated
+
+    Charity:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        category:
+          type: string
+          enum: [recommended, hated]
+        logoUrl:
+          type: string
+          nullable: true
+        isHot:
+          type: boolean
+        totalReceived:
+          type: number
+      required:
+        - id
+        - name
+        - description
+        - category
+        - isHot
+        - totalReceived
+
+    Donation:
+      type: object
+      properties:
+        id:
+          type: integer
+        alarmId:
+          type: integer
+        charityId:
+          type: integer
+        charityName:
+          type: string
+        amount:
+          type: number
+        reason:
+          type: string
+          enum: [snooze, missed]
+        status:
+          type: string
+          enum: [pending, completed, failed]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - alarmId
+        - charityId
+        - charityName
+        - amount
+        - reason
+        - status
+        - createdAt
+
+    DonationStats:
+      type: object
+      properties:
+        totalDonated:
+          type: number
+        totalDonations:
+          type: integer
+        alarmsTriggered:
+          type: integer
+        alarmsDismissed:
+          type: integer
+        snoozeCount:
+          type: integer
+        successRate:
+          type: number
+      required:
+        - totalDonated
+        - totalDonations
+        - alarmsTriggered
+        - alarmsDismissed
+        - snoozeCount
+        - successRate
