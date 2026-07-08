@@ -1,12 +1,56 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, Alert,
+  Platform, Alert, TextInput, Modal, FlatList,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { router } from "expo-router";
+
+const CHARITIES = [
+  "Animal Shelter", "Red Cross", "UNICEF", "WWF", "Doctors Without Borders",
+  "Habitat for Humanity", "Save the Children", "Amnesty International",
+  "Greenpeace", "Food Bank",
+];
+
+const DEFAULT_CHARITY_OPTIONS = CHARITIES;
+
+function SectionHeader({ title }: { title: string }) {
+  return <Text style={styles.sectionTitle}>{title}</Text>;
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return <View style={styles.card}>{children}</View>;
+}
+
+function Row({
+  icon, label, value, onPress, danger, right,
+}: {
+  icon?: string;
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  danger?: boolean;
+  right?: React.ReactNode;
+}) {
+  const content = (
+    <View style={styles.row}>
+      {icon ? <Feather name={icon as any} size={16} color={danger ? "#FF453A" : "#8888AA"} /> : <View style={{ width: 16 }} />}
+      <Text style={[styles.rowLabel, danger && { color: "#FF453A" }]}>{label}</Text>
+      <View style={styles.rowRight}>
+        {right ?? (value ? <Text style={styles.rowValue}>{value}</Text> : null)}
+        {onPress && !right && <Feather name="chevron-right" size={16} color="#44445A" />}
+      </View>
+    </View>
+  );
+  if (onPress) return <TouchableOpacity onPress={onPress} activeOpacity={0.7}>{content}</TouchableOpacity>;
+  return content;
+}
+
+function Divider() {
+  return <View style={styles.divider} />;
+}
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
@@ -14,19 +58,41 @@ export default function ProfileScreen() {
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 84);
 
+  const [cardConnected, setCardConnected] = useState(false);
+  const [donationAmount, setDonationAmount] = useState("5");
+  const [snoozeLimit, setSnoozeLimit] = useState("3");
+  const [defaultCharity, setDefaultCharity] = useState("Animal Shelter");
+  const [dailyLimit, setDailyLimit] = useState("20");
+  const [monthlyLimit, setMonthlyLimit] = useState("200");
+  const [favoriteCharities, setFavoriteCharities] = useState<string[]>(["Animal Shelter"]);
+
+  const [showDefaultCharityPicker, setShowDefaultCharityPicker] = useState(false);
+  const [showFavoritePicker, setShowFavoritePicker] = useState(false);
+
   const handleLogout = () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
       { text: "Cancel", style: "cancel" },
-      { text: "Sign Out", style: "destructive", onPress: async () => {
-        await logout();
-        router.replace("/auth");
-      }},
+      {
+        text: "Sign Out", style: "destructive", onPress: async () => {
+          await logout();
+          router.replace("/auth");
+        }
+      },
     ]);
   };
 
-  const successRate = user?.alarmsTriggered
-    ? Math.round((user.alarmsDismissed / user.alarmsTriggered) * 100)
-    : 0;
+  const handleSignIn = () => router.replace("/auth");
+
+  const toggleFavorite = (charity: string) => {
+    setFavoriteCharities(prev => {
+      if (prev.includes(charity)) return prev.filter(c => c !== charity);
+      if (prev.length >= 3) {
+        Alert.alert("Limit reached", "You can only pick 3 favorite charities.");
+        return prev;
+      }
+      return [...prev, charity];
+    });
+  };
 
   return (
     <ScrollView
@@ -34,137 +100,280 @@ export default function ProfileScreen() {
       contentContainerStyle={{ paddingBottom: bottomPad }}
       showsVerticalScrollIndicator={false}
     >
-      {/* Profile header */}
-      <View style={styles.profileHeader}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {user?.name?.charAt(0).toUpperCase() ?? "?"}
-          </Text>
-        </View>
-        <Text style={styles.userName}>{user?.name}</Text>
-        <Text style={styles.userEmail}>{user?.email}</Text>
-      </View>
+      <Text style={styles.pageTitle}>Profile</Text>
 
-      {/* Stats cards */}
-      <View style={styles.statsGrid}>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: "#FF5A3C" }]}>
-            ${(user?.totalDonated ?? 0).toFixed(0)}
-          </Text>
-          <Text style={styles.statLabel}>Donated</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: "#30D158" }]}>
-            {successRate}%
-          </Text>
-          <Text style={styles.statLabel}>Success Rate</Text>
-        </View>
-        <View style={styles.statCard}>
-          <Text style={[styles.statValue, { color: "#FF9F0A" }]}>
-            {user?.alarmsTriggered ?? 0}
-          </Text>
-          <Text style={styles.statLabel}>Alarms</Text>
-        </View>
-      </View>
+      {/* ── PERSONAL ── */}
+      <SectionHeader title="Personal" />
+      <Card>
+        <Row icon="user" label="Name" value={user?.name ?? "—"} />
+        <Divider />
+        <Row icon="mail" label="Email" value={user?.email ?? "—"} />
+        <Divider />
+        {user ? (
+          <Row icon="log-out" label="Sign Out" onPress={handleLogout} danger />
+        ) : (
+          <Row icon="log-in" label="Sign In" onPress={handleSignIn} />
+        )}
+      </Card>
 
-      {/* Info section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
-        <View style={styles.infoCard}>
-          <View style={styles.infoRow}>
-            <Feather name="mail" size={16} color="#8888AA" />
-            <Text style={styles.infoValue}>{user?.email}</Text>
+      {/* ── PAYMENT ── */}
+      <SectionHeader title="Payment" />
+      <Card>
+        <Row
+          icon="credit-card"
+          label="Payment Method"
+          right={
+            <View style={[styles.badge, cardConnected ? styles.badgeGreen : styles.badgeGray]}>
+              <Text style={[styles.badgeText, cardConnected ? { color: "#30D158" } : { color: "#8888AA" }]}>
+                {cardConnected ? "Card connected" : "Not connected"}
+              </Text>
+            </View>
+          }
+        />
+        <Divider />
+        {!cardConnected ? (
+          <Row
+            icon="plus-circle"
+            label="Connect card"
+            onPress={() => {
+              Alert.alert("Connect Card", "Payment integration coming soon.");
+              setCardConnected(false);
+            }}
+          />
+        ) : (
+          <Row
+            icon="trash-2"
+            label="Remove card"
+            onPress={() => {
+              Alert.alert("Remove Card", "Are you sure?", [
+                { text: "Cancel", style: "cancel" },
+                { text: "Remove", style: "destructive", onPress: () => setCardConnected(false) },
+              ]);
+            }}
+            danger
+          />
+        )}
+      </Card>
+
+      {/* ── DONATIONS ── */}
+      <SectionHeader title="Donations" />
+      <Card>
+        <View style={styles.row}>
+          <Feather name="dollar-sign" size={16} color="#8888AA" />
+          <Text style={styles.rowLabel}>Default donation amount</Text>
+          <View style={styles.rowRight}>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={donationAmount}
+                onChangeText={setDonationAmount}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
+            </View>
+            <Text style={styles.rowValue}>₪</Text>
           </View>
-          <View style={styles.separator} />
-          <View style={styles.infoRow}>
-            <Feather name="calendar" size={16} color="#8888AA" />
-            <Text style={styles.infoValue}>
-              Joined {new Date(user?.createdAt ?? "").toLocaleDateString("en-US", { month: "long", year: "numeric" })}
-            </Text>
-          </View>
         </View>
-      </View>
-
-      {/* How fund categories work */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Fund Categories</Text>
-        <View style={styles.categoryCard}>
-          <View style={styles.categoryRow}>
-            <View style={[styles.categoryDot, { backgroundColor: "#30D158" }]} />
-            <View style={styles.categoryInfo}>
-              <Text style={styles.categoryName}>Favorite</Text>
-              <Text style={styles.categoryDesc}>Charities you personally support — pick from our partners</Text>
+        <Divider />
+        <View style={styles.row}>
+          <Feather name="clock" size={16} color="#8888AA" />
+          <Text style={styles.rowLabel}>Default snooze limit</Text>
+          <View style={styles.rowRight}>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={snoozeLimit}
+                onChangeText={setSnoozeLimit}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
             </View>
           </View>
-          <View style={styles.separator} />
-          <View style={styles.categoryRow}>
-            <View style={[styles.categoryDot, { backgroundColor: "#FF9F0A" }]} />
-            <View style={styles.categoryInfo}>
-              <Text style={styles.categoryName}>Recommended</Text>
-              <Text style={styles.categoryDesc}>Hot charities — we boost donations from our side</Text>
+        </View>
+        <Divider />
+        <Row
+          icon="heart"
+          label="Default charity"
+          value={defaultCharity}
+          onPress={() => setShowDefaultCharityPicker(true)}
+        />
+        <Divider />
+        <Row
+          icon="star"
+          label="Favorite charities"
+          value={favoriteCharities.length === 0 ? "Choose up to 3" : favoriteCharities.join(", ")}
+          onPress={() => setShowFavoritePicker(true)}
+        />
+        <Divider />
+        <View style={styles.row}>
+          <Feather name="sun" size={16} color="#8888AA" />
+          <Text style={styles.rowLabel}>Daily limit</Text>
+          <View style={styles.rowRight}>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={dailyLimit}
+                onChangeText={setDailyLimit}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
             </View>
-          </View>
-          <View style={styles.separator} />
-          <View style={styles.categoryRow}>
-            <View style={[styles.categoryDot, { backgroundColor: "#FF453A" }]} />
-            <View style={styles.categoryInfo}>
-              <Text style={styles.categoryName}>Hated</Text>
-              <Text style={styles.categoryDesc}>Organizations you dislike — maximum motivation to wake up!</Text>
-            </View>
+            <Text style={styles.rowValue}>₪</Text>
           </View>
         </View>
-      </View>
+        <Divider />
+        <View style={styles.row}>
+          <Feather name="calendar" size={16} color="#8888AA" />
+          <Text style={styles.rowLabel}>Monthly limit</Text>
+          <View style={styles.rowRight}>
+            <View style={styles.inputWrap}>
+              <TextInput
+                style={styles.input}
+                value={monthlyLimit}
+                onChangeText={setMonthlyLimit}
+                keyboardType="numeric"
+                selectTextOnFocus
+              />
+            </View>
+            <Text style={styles.rowValue}>₪</Text>
+          </View>
+        </View>
+      </Card>
 
-      {/* Sign out */}
-      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-        <Feather name="log-out" size={18} color="#FF453A" />
-        <Text style={styles.logoutText}>Sign Out</Text>
-      </TouchableOpacity>
+      {/* ── LEGAL ── */}
+      <SectionHeader title="Legal" />
+      <Card>
+        {[
+          { label: "Privacy Policy", icon: "shield" },
+          { label: "Terms of Use", icon: "file-text" },
+          { label: "Donation Policy", icon: "gift" },
+          { label: "Refund Policy", icon: "refresh-cw" },
+          { label: "About", icon: "info" },
+          { label: "Contact Support", icon: "message-circle" },
+        ].map((item, i, arr) => (
+          <React.Fragment key={item.label}>
+            <Row
+              icon={item.icon}
+              label={item.label}
+              onPress={() => Alert.alert(item.label, "Coming soon.")}
+            />
+            {i < arr.length - 1 && <Divider />}
+          </React.Fragment>
+        ))}
+      </Card>
+
+      {/* ── Default Charity Picker ── */}
+      <Modal visible={showDefaultCharityPicker} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDefaultCharityPicker(false)}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Default Charity</Text>
+            <FlatList
+              data={DEFAULT_CHARITY_OPTIONS}
+              keyExtractor={i => i}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.pickerRow}
+                  onPress={() => { setDefaultCharity(item); setShowDefaultCharityPicker(false); }}
+                >
+                  <Text style={[styles.pickerText, item === defaultCharity && { color: "#FF5A3C" }]}>{item}</Text>
+                  {item === defaultCharity && <Feather name="check" size={16} color="#FF5A3C" />}
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── Favorite Charities Picker ── */}
+      <Modal visible={showFavoritePicker} transparent animationType="slide">
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowFavoritePicker(false)}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Favorite Charities (max 3)</Text>
+            <FlatList
+              data={CHARITIES}
+              keyExtractor={i => i}
+              renderItem={({ item }) => {
+                const selected = favoriteCharities.includes(item);
+                return (
+                  <TouchableOpacity style={styles.pickerRow} onPress={() => toggleFavorite(item)}>
+                    <Text style={[styles.pickerText, selected && { color: "#FF5A3C" }]}>{item}</Text>
+                    {selected && <Feather name="check" size={16} color="#FF5A3C" />}
+                  </TouchableOpacity>
+                );
+              }}
+            />
+            <TouchableOpacity style={styles.doneBtn} onPress={() => setShowFavoritePicker(false)}>
+              <Text style={styles.doneBtnText}>Done</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0A0A0F" },
-  profileHeader: { alignItems: "center", paddingVertical: 32 },
-  avatar: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: "#FF5A3C22", borderWidth: 2, borderColor: "#FF5A3C",
-    alignItems: "center", justifyContent: "center", marginBottom: 12,
+  pageTitle: {
+    fontSize: 28, fontFamily: "Inter_700Bold", color: "#F0F0FF",
+    marginHorizontal: 16, marginTop: 8, marginBottom: 20,
   },
-  avatarText: { fontSize: 32, fontFamily: "Inter_700Bold", color: "#FF5A3C" },
-  userName: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#F0F0FF", marginBottom: 4 },
-  userEmail: { fontSize: 14, color: "#8888AA", fontFamily: "Inter_400Regular" },
-  statsGrid: { flexDirection: "row", gap: 10, marginHorizontal: 16, marginBottom: 24 },
-  statCard: {
-    flex: 1, backgroundColor: "#141420", borderRadius: 16, padding: 16,
-    alignItems: "center", borderWidth: 1, borderColor: "#2A2A40",
+  sectionTitle: {
+    fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#8888AA",
+    textTransform: "uppercase", letterSpacing: 0.8,
+    marginHorizontal: 16, marginBottom: 8, marginTop: 16,
   },
-  statValue: { fontSize: 22, fontFamily: "Inter_700Bold", marginBottom: 4 },
-  statLabel: { fontSize: 11, color: "#8888AA", fontFamily: "Inter_500Medium" },
-  section: { marginHorizontal: 16, marginBottom: 20 },
-  sectionTitle: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#8888AA", marginBottom: 10 },
-  infoCard: {
-    backgroundColor: "#141420", borderRadius: 16, overflow: "hidden",
+  card: {
+    backgroundColor: "#141420", borderRadius: 16,
+    marginHorizontal: 16, borderWidth: 1, borderColor: "#2A2A40",
+    overflow: "hidden",
+  },
+  row: {
+    flexDirection: "row", alignItems: "center",
+    paddingHorizontal: 16, paddingVertical: 14, gap: 12,
+  },
+  rowLabel: { flex: 1, fontSize: 14, fontFamily: "Inter_400Regular", color: "#F0F0FF" },
+  rowRight: { flexDirection: "row", alignItems: "center", gap: 6, maxWidth: "50%" },
+  rowValue: { fontSize: 14, fontFamily: "Inter_400Regular", color: "#8888AA", textAlign: "right" },
+  divider: { height: 1, backgroundColor: "#2A2A40", marginLeft: 44 },
+  badge: { borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  badgeGreen: { backgroundColor: "#30D15820" },
+  badgeGray: { backgroundColor: "#2A2A40" },
+  badgeText: { fontSize: 12, fontFamily: "Inter_500Medium" },
+  inputWrap: {
+    backgroundColor: "#0A0A0F", borderRadius: 8,
     borderWidth: 1, borderColor: "#2A2A40",
+    paddingHorizontal: 8, paddingVertical: 2,
   },
-  infoRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16 },
-  infoValue: { fontSize: 14, color: "#F0F0FF", fontFamily: "Inter_400Regular" },
-  separator: { height: 1, backgroundColor: "#2A2A40" },
-  categoryCard: {
-    backgroundColor: "#141420", borderRadius: 16, overflow: "hidden",
-    borderWidth: 1, borderColor: "#2A2A40",
+  input: {
+    fontSize: 14, fontFamily: "Inter_400Regular",
+    color: "#F0F0FF", minWidth: 36, textAlign: "right",
   },
-  categoryRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 16 },
-  categoryDot: { width: 10, height: 10, borderRadius: 5, marginTop: 4 },
-  categoryInfo: { flex: 1 },
-  categoryName: { fontSize: 14, fontFamily: "Inter_600SemiBold", color: "#F0F0FF", marginBottom: 2 },
-  categoryDesc: { fontSize: 12, color: "#8888AA", fontFamily: "Inter_400Regular" },
-  logoutBtn: {
-    flexDirection: "row", alignItems: "center", gap: 10,
-    marginHorizontal: 16, marginTop: 8, marginBottom: 8,
-    backgroundColor: "#2A1215", borderRadius: 16, padding: 16,
-    borderWidth: 1, borderColor: "#FF453A44",
+  modalOverlay: {
+    flex: 1, backgroundColor: "#00000088", justifyContent: "flex-end",
   },
-  logoutText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#FF453A" },
+  modalSheet: {
+    backgroundColor: "#141420", borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingBottom: 40, maxHeight: "70%",
+  },
+  modalHandle: {
+    width: 40, height: 4, backgroundColor: "#2A2A40",
+    borderRadius: 2, alignSelf: "center", marginTop: 12, marginBottom: 8,
+  },
+  modalTitle: {
+    fontSize: 16, fontFamily: "Inter_700Bold", color: "#F0F0FF",
+    marginHorizontal: 20, marginBottom: 12,
+  },
+  pickerRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    paddingHorizontal: 20, paddingVertical: 14,
+    borderBottomWidth: 1, borderBottomColor: "#2A2A40",
+  },
+  pickerText: { fontSize: 15, fontFamily: "Inter_400Regular", color: "#F0F0FF" },
+  doneBtn: {
+    margin: 16, backgroundColor: "#FF5A3C", borderRadius: 14, padding: 14, alignItems: "center",
+  },
+  doneBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#FFF" },
 });
