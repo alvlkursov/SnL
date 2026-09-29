@@ -1,0 +1,23 @@
+{
+  "name": "@workspace/signal-trader",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "login": "tsx --env-file-if-exists=.env ./src/cli/login.ts",
+    "start": "tsx --env-file-if-exists=.env ./src/index.ts",
+    "backtest": "tsx --env-file-if-exists=.env ./src/cli/backtest.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "bybit-api": "^4.7.7",
+    "telegram": "^2.26.22",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "vitest": "^5.0.2"
+  }
+}
