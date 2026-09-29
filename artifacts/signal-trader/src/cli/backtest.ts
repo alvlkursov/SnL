@@ -16,6 +16,7 @@ import type { Candle, ChannelMessage } from "../types.js";
 import { formatSummary, groupBy, summarize, toCsv, type Row } from "../backtest/report.js";
 import { simulate } from "../backtest/simulate.js";
 import { fetchWebHistory, loadDesktopExport } from "../backtest/sources.js";
+import type { DatasetEntry } from "../backtest/variants.js";
 
 const { values: args } = parseArgs({
   options: {
@@ -70,8 +71,11 @@ async function loadMessages(): Promise<ChannelMessage[]> {
 if (args.prices !== "bybit" && args.prices !== "binance") throw new Error("--prices must be bybit or binance");
 const market = args.prices === "binance" ? new BinanceSpot() : new Market();
 
+const candleFile = (symbol: string, start: number, end: number) =>
+  join(cacheDir, `${args.prices}_${symbol}_${intervalMin}_${start}_${end}.json`);
+
 async function cachedCandles(symbol: string, start: number, end: number): Promise<Candle[]> {
-  const file = join(cacheDir, `${args.prices}_${symbol}_${intervalMin}_${start}_${end}.json`);
+  const file = candleFile(symbol, start, end);
   try {
     return JSON.parse(await readFile(file, "utf8")) as Candle[];
   } catch {
@@ -87,6 +91,7 @@ async function main() {
   console.log(`\nСообщений: ${messages.length} с ${since.toISOString().slice(0, 10)}`);
 
   const rows: Row[] = [];
+  const dataset: DatasetEntry[] = [];
   const invalid: Array<{ id: number; reason: string }> = [];
   for (const msg of messages) {
     const parsed = parseSignal(msg.text);
@@ -114,7 +119,15 @@ async function main() {
       continue;
     }
     const candles = await cachedCandles(resolved.symbol, start, end);
-    const result = simulate(scaleSignal(signal, resolved.multiplier), candles, cfg);
+    const scaled = scaleSignal(signal, resolved.multiplier);
+    const result = simulate(scaled, candles, cfg);
+    dataset.push({
+      messageId: msg.id,
+      date: msg.date.toISOString(),
+      symbol: resolved.symbol,
+      signal: scaled,
+      candles: candleFile(resolved.symbol, start, end),
+    });
     rows.push({ ...base, symbol: resolved.symbol, result });
     process.stdout.write(`\r${rows.length} сигналов обработано`);
   }
@@ -137,6 +150,8 @@ async function main() {
   }
 
   await writeFile(join(args.out!, "trades.csv"), toCsv(rows));
+  // Input for `pnpm optimize`: every tradable signal with its candle file.
+  await writeFile(join(args.out!, "dataset.json"), JSON.stringify(dataset));
   await writeFile(join(args.out!, "summary.json"), JSON.stringify(summarize(rows, cfg.RISK_PER_TRADE_PCT), null, 2));
   console.log(`\nПодробно по каждой сделке: ${join(args.out!, "trades.csv")}`);
 }

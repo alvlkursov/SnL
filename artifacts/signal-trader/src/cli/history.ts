@@ -66,7 +66,7 @@ console.log("По сторонам:", Object.fromEntries(count(signals.map((x) =
 console.log("По типу:", Object.fromEntries(count(signals.map((x) => x.s.tradeType ?? "не указан"))));
 
 const mid = (s: Signal) => (s.entryLow + s.entryHigh) / 2;
-const rrMid = signals.map((x) => rewardRisk(x.s, mid(x.s)));
+const rrMid = signals.map((x) => rewardRisk(x.s.targets[0]!, x.s.stop, mid(x.s)));
 const stopPct = signals.map((x) => (Math.abs(mid(x.s) - x.s.stop) / mid(x.s)) * 100);
 const targetPct = signals.map((x) => (Math.abs(x.s.targets[0]! - mid(x.s)) / mid(x.s)) * 100);
 const lev = signals.map((x) => x.s.leverage ?? NaN).filter(Number.isFinite);

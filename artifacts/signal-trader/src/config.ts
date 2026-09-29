@@ -23,8 +23,19 @@ export const strategySchema = z.object({
   MAX_LEVERAGE: z.coerce.number().int().min(1).default(20),
   /** Liquidation must be at least this many times further than the stop. */
   LIQ_BUFFER: z.coerce.number().min(1).default(1.5),
+  // Execution rules, relative to the zone's worst edge (where price usually is when a post appears).
+  // Defaults come from `pnpm optimize` on a year of @hardcoretrading; ENTRY_FRAC=0 TP_MULT=1 SL_MULT=1
+  // BREAKEVEN_AT=0 trades the signals exactly as posted.
+  /** Where to rest the entry inside the zone: 0 = worst edge (now), 1 = best edge. */
+  ENTRY_FRAC: z.coerce.number().min(0).max(1).default(0.75),
+  /** Target distance from the worst edge as a multiple of the channel's. */
+  TP_MULT: z.coerce.number().positive().default(3),
+  /** Stop distance from the worst edge as a multiple of the channel's. */
+  SL_MULT: z.coerce.number().positive().default(0.75),
+  /** Move the stop to entry once price covers this share of the way to the target; 0 = off. */
+  BREAKEVEN_AT: z.coerce.number().min(0).max(1).default(0.5),
   /** Skip signals whose reward:risk at our entry price is below this. */
-  MIN_RR: z.coerce.number().min(0).default(0.3),
+  MIN_RR: z.coerce.number().min(0).default(0),
   /** Cancel a resting limit entry after this many minutes. */
   ENTRY_TIMEOUT_MIN: z.coerce.number().positive().default(240),
   TAKER_FEE_PCT: z.coerce.number().min(0).default(0.055),

@@ -1,31 +1,59 @@
 import type { StrategyConfig } from "./config.js";
 import type { Signal } from "./types.js";
 
+export type LevelRules = Pick<StrategyConfig, "ENTRY_FRAC" | "TP_MULT" | "SL_MULT">;
+
+export interface Levels {
+  entry: number;
+  target: number;
+  stop: number;
+}
+
+/**
+ * Our entry, target and stop for a signal. Everything is measured from the zone's worst edge
+ * (top for a long, bottom for a short), which is where price usually is when the post appears.
+ */
+export function levels(s: Signal, r: LevelRules): Levels {
+  const long = s.side === "long";
+  const worst = long ? s.entryHigh : s.entryLow;
+  const best = long ? s.entryLow : s.entryHigh;
+  return {
+    entry: worst + r.ENTRY_FRAC * (best - worst),
+    target: worst + r.TP_MULT * (s.targets[0]! - worst),
+    stop: worst - r.SL_MULT * (worst - s.stop),
+  };
+}
+
 export type EntryDecision =
-  | { action: "market"; price: number }
-  | { action: "limit"; price: number }
+  | ({ action: "market" | "limit"; price: number } & Omit<Levels, "entry">)
   | { action: "skip"; reason: string };
 
 /**
- * Where to enter given the current price.
- * At or better than the zone (below its top for a long, above its bottom for a short) we enter
- * at market; otherwise we rest a limit at the zone edge.
+ * At or better than our entry level we buy/sell at market; otherwise we rest a limit at that level.
  */
-export function decideEntry(s: Signal, price: number, cfg: Pick<StrategyConfig, "MIN_RR">): EntryDecision {
-  const target = s.targets[0]!;
+export function decideEntry(s: Signal, price: number, cfg: LevelRules & Pick<StrategyConfig, "MIN_RR">): EntryDecision {
   const long = s.side === "long";
-  if (long ? price <= s.stop : price >= s.stop) return { action: "skip", reason: "price already past stop" };
+  const { entry, target, stop } = levels(s, cfg);
+  if (long ? stop >= entry || target <= entry : stop <= entry || target >= entry) {
+    return { action: "skip", reason: "stop/target on the wrong side of entry with these multipliers" };
+  }
+  if (long ? price <= stop : price >= stop) return { action: "skip", reason: "price already past stop" };
   if (long ? price >= target : price <= target) return { action: "skip", reason: "price already past target" };
 
-  const inZoneOrBetter = long ? price <= s.entryHigh : price >= s.entryLow;
-  const entry = inZoneOrBetter ? price : long ? s.entryHigh : s.entryLow;
-  const rr = rewardRisk(s, entry);
+  const atOrBetter = long ? price <= entry : price >= entry;
+  const fill = atOrBetter ? price : entry;
+  const rr = rewardRisk(target, stop, fill);
   if (rr < cfg.MIN_RR) return { action: "skip", reason: `reward:risk ${rr.toFixed(2)} < ${cfg.MIN_RR}` };
-  return { action: inZoneOrBetter ? "market" : "limit", price: entry };
+  return { action: atOrBetter ? "market" : "limit", price: fill, target, stop };
 }
 
-export function rewardRisk(s: Signal, entry: number): number {
-  return Math.abs(s.targets[0]! - entry) / Math.abs(entry - s.stop);
+export function rewardRisk(target: number, stop: number, entry: number): number {
+  return Math.abs(target - entry) / Math.abs(entry - stop);
+}
+
+/** Price at which the stop moves to entry, or undefined when BREAKEVEN_AT is off. */
+export function breakevenTrigger(entry: number, target: number, beAt: number): number | undefined {
+  return beAt > 0 ? entry + beAt * (target - entry) : undefined;
 }
 
 /** Maintenance margin rate assumed when estimating liquidation; Bybit alts are 0.5–2.5%. */
@@ -41,18 +69,19 @@ export function safeLeverage(entry: number, stop: number, liqBuffer: number): nu
 }
 
 export function chooseLeverage(
-  s: Signal,
+  channelLeverage: number | undefined,
   entry: number,
+  stop: number,
   cfg: Pick<StrategyConfig, "MAX_LEVERAGE" | "LIQ_BUFFER">,
   exchangeMax = Infinity,
 ): number {
   return Math.max(
     1,
     Math.min(
-      s.leverage ?? cfg.MAX_LEVERAGE,
+      channelLeverage ?? cfg.MAX_LEVERAGE,
       cfg.MAX_LEVERAGE,
       exchangeMax,
-      safeLeverage(entry, s.stop, cfg.LIQ_BUFFER),
+      safeLeverage(entry, stop, cfg.LIQ_BUFFER),
     ),
   );
 }

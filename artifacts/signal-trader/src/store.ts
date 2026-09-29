@@ -18,6 +18,8 @@ export interface Trade {
   createdAt: number;
   updatedAt: number;
   pnl?: number;
+  /** Stop already moved to entry. */
+  breakeven?: boolean;
 }
 
 interface State {

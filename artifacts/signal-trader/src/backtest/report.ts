@@ -17,6 +17,7 @@ export interface Summary {
   wins: number;
   losses: number;
   timeouts: number;
+  breakevens: number;
   winRate: number;
   /** Win rate needed to break even given the average win and loss sizes. */
   breakEvenWinRate: number;
@@ -51,10 +52,11 @@ export function summarize(rows: Row[], riskPct: number): Summary {
     signals: rows.length,
     traded: traded.length,
     skipped: rows.filter((r) => r.result.outcome === "skipped").length,
-    noFill: rows.filter((r) => r.result.outcome === "no_fill" || r.result.outcome === "missed").length,
+    noFill: rows.filter((r) => r.result.outcome === "no_fill").length,
     wins: traded.filter((r) => r.result.outcome === "target").length,
     losses: traded.filter((r) => r.result.outcome === "stop").length,
     timeouts: traded.filter((r) => r.result.outcome === "timeout").length,
+    breakevens: traded.filter((r) => r.result.outcome === "breakeven").length,
     winRate: traded.length ? wins.length / traded.length : 0,
     breakEvenWinRate: avgWin + avgLoss > 0 ? avgLoss / (avgWin + avgLoss) : 0,
     avgR: traded.length ? totalR / traded.length : 0,
@@ -72,7 +74,7 @@ export function formatSummary(title: string, s: Summary, riskPct: number): strin
   return [
     `── ${title} ──`,
     `Сигналов: ${s.signals}   сделок: ${s.traded}   пропущено: ${s.skipped}   не исполнено: ${s.noFill}`,
-    `Тейк: ${s.wins}   стоп: ${s.losses}   по таймауту: ${s.timeouts}`,
+    `Тейк: ${s.wins}   стоп: ${s.losses}   безубыток: ${s.breakevens}   по таймауту: ${s.timeouts}`,
     `Винрейт: ${pct(s.winRate)}   нужно для безубытка: ${pct(s.breakEvenWinRate)}`,
     `Средний результат: ${s.avgR.toFixed(3)}R   сумма: ${s.totalR.toFixed(2)}R   profit factor: ${s.profitFactor.toFixed(2)}`,
     `При риске ${riskPct}% на сделку: итог ${s.finalEquityPct.toFixed(1)}%, макс. просадка ${s.maxDrawdownPct.toFixed(1)}%`,

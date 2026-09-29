@@ -4,7 +4,7 @@ import type { LiveConfig } from "./config.js";
 import type { Notifier } from "./notify.js";
 import { parseSignal } from "./parser.js";
 import type { Store, Trade } from "./store.js";
-import { chooseLeverage, decideEntry, filterReason, positionSize, rewardRisk } from "./strategy.js";
+import { breakevenTrigger, chooseLeverage, decideEntry, filterReason, positionSize, rewardRisk } from "./strategy.js";
 import type { ChannelMessage } from "./types.js";
 
 const CATEGORY = "linear" as const;
@@ -91,8 +91,14 @@ export class Bot {
     }
 
     const entry = decision.price;
-    const leverage = chooseLeverage(signal, entry, this.cfg, Number(instrument.leverageFilter.maxLeverage));
-    const byRisk = positionSize(equity, entry, signal.stop, this.cfg);
+    const leverage = chooseLeverage(
+      signal.leverage,
+      entry,
+      decision.stop,
+      this.cfg,
+      Number(instrument.leverageFilter.maxLeverage),
+    );
+    const byRisk = positionSize(equity, entry, decision.stop, this.cfg);
     const byMargin = (available * (this.cfg.MAX_MARGIN_PCT / 100) * leverage) / entry;
     const qty = roundQty(instrument, Math.min(byRisk, byMargin));
     const notional = Number(qty) * entry;
@@ -103,15 +109,15 @@ export class Bot {
       return skip(`объём ${qty} меньше минимального для ${symbol}`);
     }
 
-    const target = roundPrice(instrument, signal.targets[0]!);
-    const stop = roundPrice(instrument, signal.stop);
+    const target = roundPrice(instrument, decision.target);
+    const stop = roundPrice(instrument, decision.stop);
     const entryStr = roundPrice(instrument, entry);
-    const riskUsd = Number(qty) * Math.abs(entry - signal.stop);
+    const riskUsd = Number(qty) * Math.abs(entry - decision.stop);
     const plan =
       `${signal.side === "long" ? "🟢 LONG" : "🔴 SHORT"} ${symbol} #${msg.id}\n` +
       `${decision.action === "market" ? "Рынок" : "Лимит"} ${entryStr}, объём ${qty} (${notional.toFixed(2)} USDT), плечо ${leverage}x` +
       (raw.leverage && raw.leverage !== leverage ? ` (в канале ${raw.leverage}x)` : "") +
-      `\nTP ${target}  SL ${stop}  R:R ${rewardRisk(signal, entry).toFixed(2)}  риск ≈ ${riskUsd.toFixed(2)} USDT`;
+      `\nTP ${target}  SL ${stop}  R:R ${rewardRisk(decision.target, decision.stop, entry).toFixed(2)}  риск ≈ ${riskUsd.toFixed(2)} USDT`;
 
     if (this.cfg.DRY_RUN) {
       await this.store.markProcessed(msg.id, "dry-run");
@@ -193,7 +199,7 @@ export class Bot {
     const pos = positions.list.find((p) => Number(p.size) > 0);
 
     if (t.status === "open") {
-      if (pos) return;
+      if (pos) return this.maybeBreakeven(t, Number(pos.avgPrice));
       const pnl = await this.closedPnl(t);
       await this.store.updateTrade(t.orderLinkId, { status: "closed", pnl });
       await this.notifier.send(
@@ -246,6 +252,34 @@ export class Bot {
     await this.notifier.send(
       `⌛ ${t.symbol} лимитный вход отменён: ${pastTarget ? "цена дошла до цели без нас" : "таймаут"}`,
     );
+  }
+
+  /** Moves the stop to entry (plus fees) once price has covered BREAKEVEN_AT of the way to the target. */
+  private async maybeBreakeven(t: Trade, avgPrice: number): Promise<void> {
+    if (t.breakeven) return;
+    const trigger = breakevenTrigger(avgPrice, Number(t.target), this.cfg.BREAKEVEN_AT);
+    if (trigger === undefined) return;
+    const price = await this.market.lastPrice(t.symbol);
+    const long = t.side === "long";
+    if (price === undefined || (long ? price < trigger : price > trigger)) return;
+
+    const instrument = (await this.market.loadInstruments()).get(t.symbol);
+    if (!instrument) return;
+    const fee = (2 * this.cfg.TAKER_FEE_PCT) / 100;
+    const stop = roundPrice(instrument, avgPrice * (long ? 1 + fee : 1 - fee));
+    unwrap(
+      await this.client.setTradingStop({
+        category: CATEGORY,
+        symbol: t.symbol,
+        stopLoss: stop,
+        slTriggerBy: "LastPrice",
+        tpslMode: "Full",
+        positionIdx: 0,
+      }),
+      "setTradingStop",
+    );
+    await this.store.updateTrade(t.orderLinkId, { breakeven: true, stop });
+    await this.notifier.send(`🛡 ${t.symbol}: стоп перенесён в безубыток (${stop})`);
   }
 
   private async closedPnl(t: Trade): Promise<number> {
