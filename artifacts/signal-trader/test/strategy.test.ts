@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parseSignal } from "../src/parser.js";
-import { chooseLeverage, decideEntry, liquidationPrice, positionSize, safeLeverage } from "../src/strategy.js";
+import {
+  chooseLeverage,
+  decideEntry,
+  filterReason,
+  liquidationPrice,
+  positionSize,
+  safeLeverage,
+} from "../src/strategy.js";
 import type { Signal } from "../src/types.js";
 import { FF, TRUMP } from "./samples.js";
 
@@ -49,6 +56,15 @@ describe("leverage", () => {
   });
   it("safeLeverage shrinks as the stop widens", () => {
     expect(safeLeverage(100, 99, 1.5)).toBeGreaterThan(safeLeverage(100, 95, 1.5));
+  });
+});
+
+describe("filterReason", () => {
+  const f = { TRADE_TYPES: ["краткосрок"], COIN_BLACKLIST: ["FF"] };
+  it("matches any of several trade types", () => {
+    expect(filterReason({ ...sig(TRUMP), tradeType: "краткосрок, среднесрок" }, f)).toBeUndefined();
+    expect(filterReason({ ...sig(TRUMP), tradeType: "среднесрок" }, f)).toMatch(/TRADE_TYPES/);
+    expect(filterReason(sig(FF), f)).toBe("FF is blacklisted");
   });
 });
 

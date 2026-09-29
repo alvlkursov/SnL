@@ -44,30 +44,14 @@ export class Market {
    * Finds the USDT perpetual for a coin. When several exist (TRUMPUSDT vs 1000TRUMPUSDT),
    * the one whose price matches the signal is chosen via `priceAt`.
    */
-  async resolve(coin: string, signal: Signal, priceAt: (symbol: string) => Promise<number | undefined>) {
+  async resolve(
+    coin: string,
+    signal: Signal,
+    priceAt: (symbol: string) => Promise<number | undefined>,
+  ): Promise<ResolvedSymbol | { error: string }> {
     const instruments = await this.loadInstruments();
-    const candidates = MULTIPLIERS.map((m) => ({ m, symbol: `${m === 1 ? "" : m}${coin}USDT` })).filter((c) =>
-      instruments.has(c.symbol),
-    );
-    if (candidates.length === 0) return { error: `${coin}: no USDT perpetual on Bybit` } as const;
-
-    const ref = (signal.entryLow + signal.entryHigh) / 2;
-    let best: { r: ResolvedSymbol; dev: number } | undefined;
-    for (const c of candidates) {
-      const price = await priceAt(c.symbol);
-      if (price === undefined) continue;
-      // The channel may quote the coin's own price or the contract's (already ×1000).
-      for (const multiplier of new Set([c.m, 1])) {
-        const dev = Math.abs(Math.log(price / multiplier / ref));
-        if (!best || dev < best.dev) {
-          best = { r: { symbol: c.symbol, multiplier, instrument: instruments.get(c.symbol)! }, dev };
-        }
-      }
-    }
-    if (!best) return { error: `${coin}: no price data` } as const;
-    // More than ~35% away from the entry zone means a wrong coin or a typo in the post.
-    if (best.dev > Math.log(1.35)) return { error: `${coin}: market price does not match signal` } as const;
-    return best.r;
+    const picked = await pickSymbol(coin, signal, new Set(instruments.keys()), priceAt, "USDT perpetual on Bybit");
+    return "error" in picked ? picked : { ...picked, instrument: instruments.get(picked.symbol)! };
   }
 
   async lastPrice(symbol: string): Promise<number | undefined> {
@@ -103,6 +87,38 @@ export class Market {
     }
     return out;
   }
+}
+
+/**
+ * Chooses among COINUSDT, 1000COINUSDT, … the listing whose price matches the signal.
+ * The channel may quote the coin's own price or the ×1000 contract's price.
+ */
+export async function pickSymbol(
+  coin: string,
+  signal: Signal,
+  listed: Set<string>,
+  priceAt: (symbol: string) => Promise<number | undefined>,
+  what: string,
+): Promise<{ symbol: string; multiplier: number } | { error: string }> {
+  const candidates = MULTIPLIERS.map((m) => ({ m, symbol: `${m === 1 ? "" : m}${coin}USDT` })).filter((c) =>
+    listed.has(c.symbol),
+  );
+  if (candidates.length === 0) return { error: `${coin}: no ${what}` };
+
+  const ref = (signal.entryLow + signal.entryHigh) / 2;
+  let best: { symbol: string; multiplier: number; dev: number } | undefined;
+  for (const c of candidates) {
+    const price = await priceAt(c.symbol);
+    if (price === undefined) continue;
+    for (const multiplier of new Set([c.m, 1])) {
+      const dev = Math.abs(Math.log(price / multiplier / ref));
+      if (!best || dev < best.dev) best = { symbol: c.symbol, multiplier, dev };
+    }
+  }
+  if (!best) return { error: `${coin}: no price data` };
+  // More than ~35% away from the entry zone means a wrong coin or a typo in the post.
+  if (best.dev > Math.log(1.35)) return { error: `${coin}: market price does not match signal` };
+  return { symbol: best.symbol, multiplier: best.multiplier };
 }
 
 export function scaleSignal(s: Signal, m: number): Signal {

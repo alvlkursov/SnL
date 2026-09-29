@@ -84,7 +84,8 @@ export function filterReason(
   cfg: Pick<StrategyConfig, "TRADE_TYPES" | "COIN_BLACKLIST">,
 ): string | undefined {
   if (cfg.COIN_BLACKLIST.includes(s.coin)) return `${s.coin} is blacklisted`;
-  if (cfg.TRADE_TYPES.length && !cfg.TRADE_TYPES.includes(s.tradeType ?? "")) {
+  const types = s.tradeType?.split(", ") ?? [];
+  if (cfg.TRADE_TYPES.length && !types.some((t) => cfg.TRADE_TYPES.includes(t))) {
     return `trade type "${s.tradeType ?? "—"}" not in TRADE_TYPES`;
   }
   return undefined;

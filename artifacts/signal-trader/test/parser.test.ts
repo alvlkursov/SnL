@@ -68,6 +68,20 @@ describe("parseSignal", () => {
     });
   });
 
+  it("normalizes the trade type", () => {
+    const type = (t: string) => {
+      const r = parseSignal(FF.replace("краткосрок", t));
+      return r.kind === "signal" ? r.signal.tradeType : r;
+    };
+    expect(type("красткосрок")).toBe("краткосрок");
+    expect(type("Краткосрок, среднесрок.")).toBe("краткосрок, среднесрок");
+    expect(type("среднесрок, к тейку придём не сразу. придётся подождать")).toBe("среднесрок");
+  });
+
+  it("still parses a post with an outcome note appended", () => {
+    expect(parseSignal(`${FF}\nUpd. Задели стоп ❌\n\nЗакрытый канал | Наши биржи`)).toMatchObject({ kind: "signal" });
+  });
+
   it("ignores ordinary posts", () => {
     expect(parseSignal("Всем доброе утро! Рынок сегодня спокойный")).toEqual({ kind: "other" });
   });

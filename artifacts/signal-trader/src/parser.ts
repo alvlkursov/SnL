@@ -58,11 +58,27 @@ export function parseSignal(raw: string): ParseResult {
     entryHigh: Math.max(e1, e2),
     targets,
     stop: num(stopM[1]!),
-    tradeType: TYPE_RE.exec(text)?.[1]?.trim().toLowerCase(),
+    tradeType: normalizeTradeType(TYPE_RE.exec(text)?.[1]),
   };
 
   const reason = validate(signal);
   return reason ? { kind: "invalid", reason } : { kind: "signal", signal };
+}
+
+/**
+ * "краткосрок", "среднесрок" or both joined with ", ". The channel sometimes adds a sentence
+ * after the type or misspells it ("красткосрок").
+ */
+function normalizeTradeType(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const t = raw.toLowerCase();
+  const types = [
+    /кра\S*ткосроч?/.test(t) && "краткосрок",
+    /среднесроч?/.test(t) && "среднесрок",
+    /долгосроч?/.test(t) && "долгосрок",
+  ];
+  const found = types.filter((x): x is string => Boolean(x));
+  return found.length ? found.join(", ") : t.trim();
 }
 
 export function validate(s: Signal): string | undefined {

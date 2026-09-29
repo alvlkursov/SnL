@@ -6,6 +6,7 @@
   "scripts": {
     "login": "tsx --env-file-if-exists=.env ./src/cli/login.ts",
     "start": "tsx --env-file-if-exists=.env ./src/index.ts",
+    "history": "tsx --env-file-if-exists=.env ./src/cli/history.ts",
     "backtest": "tsx --env-file-if-exists=.env ./src/cli/backtest.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"

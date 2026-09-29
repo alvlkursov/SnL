@@ -44,7 +44,10 @@ export class Bot {
   private async process(msg: ChannelMessage, edited: boolean): Promise<void> {
     const parsed = parseSignal(msg.text);
     if (this.store.isProcessed(msg.id)) {
-      if (edited && parsed.kind === "signal")
+      // The channel edits posts to record the outcome ("Upd. Задели стоп"); relay that line.
+      const upd = msg.text.split("\n").find((l) => /^\s*upd\b/i.test(l));
+      if (edited && upd) await this.notifier.send(`📝 Канал отметил в сигнале #${msg.id}: ${upd.trim()}`);
+      else if (edited && parsed.kind === "signal")
         await this.notifier.send(`✏️ Сигнал #${msg.id} отредактирован после обработки, проверьте вручную`);
       return;
     }

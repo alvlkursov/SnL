@@ -2,11 +2,13 @@
 //
 //   pnpm backtest --source web --days 180            # public channel, no login
 //   pnpm backtest --source telegram --days 180       # via your session (TG_* in .env)
-//   pnpm backtest --source export --file result.json # Telegram Desktop export
+//   pnpm backtest --source export --file result.json # Telegram Desktop export or `pnpm history` output
+//   add --prices binance where Bybit is geo-blocked (spot prices from data-api.binance.vision)
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { Market, scaleSignal } from "../bybit/market.js";
+import { BinanceSpot } from "../backtest/binance.js";
 import { loadStrategyConfig } from "../config.js";
 import { parseSignal } from "../parser.js";
 import { filterReason } from "../strategy.js";
@@ -22,6 +24,8 @@ const { values: args } = parseArgs({
     file: { type: "string" },
     days: { type: "string", default: "180" },
     interval: { type: "string", default: "5" },
+    // bybit = the exchange we trade on; binance = spot prices where Bybit is geo-blocked.
+    prices: { type: "string", default: "bybit" },
     "hold-days": { type: "string", default: "7" },
     out: { type: "string", default: "data/backtest" },
   },
@@ -63,10 +67,11 @@ async function loadMessages(): Promise<ChannelMessage[]> {
   }
 }
 
-const market = new Market();
+if (args.prices !== "bybit" && args.prices !== "binance") throw new Error("--prices must be bybit or binance");
+const market = args.prices === "binance" ? new BinanceSpot() : new Market();
 
 async function cachedCandles(symbol: string, start: number, end: number): Promise<Candle[]> {
-  const file = join(cacheDir, `${symbol}_${intervalMin}_${start}_${end}.json`);
+  const file = join(cacheDir, `${args.prices}_${symbol}_${intervalMin}_${start}_${end}.json`);
   try {
     return JSON.parse(await readFile(file, "utf8")) as Candle[];
   } catch {
