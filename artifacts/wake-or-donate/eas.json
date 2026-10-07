@@ -8,16 +8,16 @@
       "developmentClient": true,
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://REPLACE_WITH_SERVER_DOMAIN/api" }
+      "env": { "EXPO_PUBLIC_API_URL": "https://wake-up-donate--sekkka.replit.app/api" }
     },
     "preview": {
       "distribution": "internal",
       "android": { "buildType": "apk" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://REPLACE_WITH_SERVER_DOMAIN/api" }
+      "env": { "EXPO_PUBLIC_API_URL": "https://wake-up-donate--sekkka.replit.app/api" }
     },
     "production": {
       "android": { "buildType": "app-bundle" },
-      "env": { "EXPO_PUBLIC_API_URL": "https://REPLACE_WITH_SERVER_DOMAIN/api" }
+      "env": { "EXPO_PUBLIC_API_URL": "https://wake-up-donate--sekkka.replit.app/api" }
     }
   }
 }
