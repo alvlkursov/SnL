@@ -3,7 +3,7 @@ import { db } from "@workspace/db";
 import { usersTable, type User } from "@workspace/db/schema";
 import { eq } from "drizzle-orm";
 import { hashPassword, verifyPassword, isLegacyHash, createSession, removeSession, authMiddleware, getUserId } from "../lib/auth.js";
-import { parseBody, registerSchema, loginSchema, updateMeSchema } from "../lib/validation.js";
+import { parseBody, registerSchema, loginSchema, updateMeSchema, deleteAccountSchema, deleteAccountWebSchema } from "../lib/validation.js";
 
 const router = Router();
 
@@ -66,6 +66,38 @@ router.patch("/me", authMiddleware, async (req, res) => {
     : await db.select().from(usersTable).where(eq(usersTable.id, getUserId(req))).limit(1);
   if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
   res.json(publicUser(user));
+});
+
+// Permanently deletes the user. Sessions, alarms, alarm history and donation records cascade.
+async function deleteUser(userId: number) {
+  await db.delete(usersTable).where(eq(usersTable.id, userId));
+}
+
+// In-app deletion (Google Play requirement); re-confirms the password
+router.delete("/me", authMiddleware, async (req, res) => {
+  const body = parseBody(deleteAccountSchema, req, res);
+  if (!body) return;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, getUserId(req))).limit(1);
+  if (!user) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!(await verifyPassword(body.password, user.passwordHash))) {
+    res.status(403).json({ error: "Forbidden", message: "Wrong password" });
+    return;
+  }
+  await deleteUser(user.id);
+  res.json({ success: true, message: "Account deleted" });
+});
+
+// Deletion from the public web page, for people who no longer have the app installed
+router.post("/delete-account", async (req, res) => {
+  const body = parseBody(deleteAccountWebSchema, req, res);
+  if (!body) return;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.email, body.email)).limit(1);
+  if (!user || !(await verifyPassword(body.password, user.passwordHash))) {
+    res.status(401).json({ error: "Unauthorized", message: "Invalid email or password" });
+    return;
+  }
+  await deleteUser(user.id);
+  res.json({ success: true, message: "Account deleted" });
 });
 
 router.post("/logout", async (req, res) => {

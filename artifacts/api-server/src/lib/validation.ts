@@ -11,6 +11,17 @@ export const registerSchema = z.object({
   timezone: timezone.optional(),
 });
 
+export const loginSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  password: z.string().min(1),
+});
+
+export const deleteAccountSchema = z.object({
+  password: z.string().min(1, "Password is required"),
+});
+
+export const deleteAccountWebSchema = loginSchema;
+
 export const updateMeSchema = z.object({
   name: z.string().trim().min(1).max(100).optional(),
   timezone: timezone.optional(),
@@ -21,10 +32,6 @@ export const voluntaryDonationSchema = z.object({
   charityId: z.number().int().positive().optional(),
 });
 
-export const loginSchema = z.object({
-  email: z.string().trim().toLowerCase().email(),
-  password: z.string().min(1),
-});
 
 const alarmFields = {
   label: z.string().trim().min(1).max(100),
