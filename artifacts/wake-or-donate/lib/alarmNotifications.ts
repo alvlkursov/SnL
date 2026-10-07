@@ -31,14 +31,16 @@ export function isAlarmData(data: unknown): data is AlarmNotificationData {
   return !!data && (data as AlarmNotificationData).kind === "alarm";
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+if (Platform.OS !== "web") {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowBanner: true,
+      shouldShowList: true,
+      shouldPlaySound: true,
+      shouldSetBadge: false,
+    }),
+  });
+}
 
 export async function setupAlarmNotifications(): Promise<boolean> {
   if (Platform.OS === "web") return false;

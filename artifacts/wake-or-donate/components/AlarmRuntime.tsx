@@ -10,26 +10,19 @@ import { ringingAlarm } from "@/lib/ringingState";
 // Ignore taps on notifications older than this (e.g. a stale one restored after restart)
 const MAX_RESPONSE_AGE_MS = 30 * 60_000;
 
-/** Background glue: permissions, opening the ring screen from notifications, and showing missed alarms. */
-export function AlarmRuntime() {
-  const { token, user } = useAuth();
-  const { fetchAlarms, fetchMissedEvents } = useAlarms();
+function openRingScreen(alarmId: number) {
+  if (ringingAlarm.id === alarmId) return;
+  ringingAlarm.id = alarmId;
+  router.push({ pathname: "/alarm/active", params: { id: alarmId } });
+}
+
+/** Opens the ring screen when the user taps an alarm notification (also on cold start). Native only. */
+function NotificationTapHandler() {
   const lastResponse = Notifications.useLastNotificationResponse();
   const handledResponses = useRef(new Set<string>());
 
-  const openRingScreen = (alarmId: number) => {
-    if (ringingAlarm.id === alarmId) return;
-    ringingAlarm.id = alarmId;
-    router.push({ pathname: "/alarm/active", params: { id: alarmId } });
-  };
-
   useEffect(() => {
-    if (token) setupAlarmNotifications().catch(() => {});
-  }, [token]);
-
-  // User tapped an alarm notification (also fires on cold start from a notification)
-  useEffect(() => {
-    if (!user || !lastResponse) return;
+    if (!lastResponse) return;
     const { request, date } = lastResponse.notification;
     const { identifier, content } = request;
     if (handledResponses.current.has(identifier)) return;
@@ -37,7 +30,19 @@ export function AlarmRuntime() {
     if (isAlarmData(content.data) && Date.now() - date < MAX_RESPONSE_AGE_MS) {
       openRingScreen(content.data.alarmId);
     }
-  }, [lastResponse, user]);
+  }, [lastResponse]);
+
+  return null;
+}
+
+/** Background glue: permissions, opening the ring screen from notifications, and showing missed alarms. */
+export function AlarmRuntime() {
+  const { token, user } = useAuth();
+  const { fetchAlarms, fetchMissedEvents } = useAlarms();
+
+  useEffect(() => {
+    if (token) setupAlarmNotifications().catch(() => {});
+  }, [token]);
 
   // An alarm fired while the app is open: go straight to the ring screen
   useEffect(() => {
@@ -74,5 +79,6 @@ export function AlarmRuntime() {
     return () => sub.remove();
   }, [user?.id]);
 
-  return null;
+  // Notification APIs don't exist in the web preview
+  return Platform.OS === "web" || !user ? null : <NotificationTapHandler />;
 }
