@@ -1,10 +1,24 @@
 import { z } from "zod";
 import type { Request, Response } from "express";
+import { isValidTimezone } from "./time.js";
+
+const timezone = z.string().refine(isValidTimezone, "Unknown timezone");
 
 export const registerSchema = z.object({
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   name: z.string().trim().min(1).max(100),
+  timezone: timezone.optional(),
+});
+
+export const updateMeSchema = z.object({
+  name: z.string().trim().min(1).max(100).optional(),
+  timezone: timezone.optional(),
+});
+
+export const voluntaryDonationSchema = z.object({
+  amount: z.number().min(1).max(500),
+  charityId: z.number().int().positive().optional(),
 });
 
 export const loginSchema = z.object({

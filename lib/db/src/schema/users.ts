@@ -8,6 +8,7 @@ export const usersTable = pgTable("users", {
   passwordHash: text("password_hash").notNull(),
   name: text("name").notNull(),
   paypalEmail: text("paypal_email"),
+  timezone: text("timezone").notNull().default("UTC"), // IANA zone, reported by the app
   totalDonated: real("total_donated").notNull().default(0),
   alarmsTriggered: integer("alarms_triggered").notNull().default(0),
   alarmsDismissed: integer("alarms_dismissed").notNull().default(0),
