@@ -24,7 +24,7 @@ export default function MissedAlarmScreen() {
 
       {/* Donation card */}
       <View style={styles.donationCard}>
-        <Text style={styles.donationAmount}>₪{amount}</Text>
+        <Text style={styles.donationAmount}>${amount}</Text>
         <Text style={styles.donationArrow}>→</Text>
         <View>
           <Text style={styles.donationFund}>{fund}</Text>

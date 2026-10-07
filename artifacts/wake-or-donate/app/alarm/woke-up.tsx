@@ -26,9 +26,9 @@ export default function WokeUpScreen() {
       "Feeling generous?",
       "Choose an amount to donate voluntarily.",
       [
-        { text: "₪5", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=5") },
-        { text: "₪10", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=10") },
-        { text: "₪18", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=18") },
+        { text: "$5", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=5") },
+        { text: "$10", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=10") },
+        { text: "$20", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=20") },
         { text: "Cancel", style: "cancel" },
       ]
     );

@@ -15,7 +15,7 @@
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Mobile**: Expo (React Native) with Expo Router
-- **Auth**: Custom token-based auth (SHA256 hash, in-memory token store)
+- **Auth**: Token-based auth — scrypt password hashes (legacy SHA256 hashes upgraded on login), random bearer tokens stored hashed in `sessions` table (90-day expiry)
 
 ## Structure
 
@@ -75,6 +75,7 @@ Routes:
 - `charities` — partner charities (recommended/hated, seeded on start)
 - `alarms` — user alarms with full configuration
 - `donations` — donation history per snooze/miss event
+- `sessions` — login sessions (sha256 of token, expiry)
 
 ## Color Palette
 
@@ -90,4 +91,6 @@ Routes:
 
 - Payment processing (PayPal/Google Pay/Stripe) is designed as a flow but actual payment API integration requires credentials from the user
 - Donation amounts are tracked in the DB and displayed in stats
+- Currency: USD (`$`) everywhere
+- After pulling schema changes run `pnpm --filter @workspace/db run push` to create new tables (e.g. `sessions`)
 - Alarm notification scheduling requires native push notifications (expo-notifications) — the active alarm screen is accessible via "Test Alarm" button in the edit screen for demo purposes

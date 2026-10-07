@@ -63,7 +63,7 @@ export default function DonationReceiptScreen() {
         <Text style={styles.highlightLabel}>
           {isVoluntary ? "Voluntary Donation" : "Donation Processed"}
         </Text>
-        <Text style={styles.highlightAmount}>₪{amount}</Text>
+        <Text style={styles.highlightAmount}>${amount}</Text>
         <Text style={styles.highlightFund}>to {fund}</Text>
         <View style={styles.statusBadge}>
           <View style={styles.statusDot} />

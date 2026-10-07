@@ -29,18 +29,14 @@ async function seedCharities() {
 seedCharities().catch(console.error);
 
 router.get("/", async (req, res) => {
-  try {
-    const { category } = req.query;
-    let charities;
-    if (category && category !== "favorite") {
-      charities = await db.select().from(charitiesTable).where(eq(charitiesTable.category, String(category)));
-    } else {
-      charities = await db.select().from(charitiesTable);
-    }
-    res.json(charities);
-  } catch (e) {
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
+  const { category } = req.query;
+  let charities;
+  if (category && category !== "favorite") {
+    charities = await db.select().from(charitiesTable).where(eq(charitiesTable.category, String(category)));
+  } else {
+    charities = await db.select().from(charitiesTable);
   }
+  res.json(charities);
 });
 
 export default router;

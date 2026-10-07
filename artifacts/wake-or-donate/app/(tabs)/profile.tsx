@@ -171,7 +171,7 @@ export default function ProfileScreen() {
                 selectTextOnFocus
               />
             </View>
-            <Text style={styles.rowValue}>₪</Text>
+            <Text style={styles.rowValue}>$</Text>
           </View>
         </View>
         <Divider />
@@ -218,7 +218,7 @@ export default function ProfileScreen() {
                 selectTextOnFocus
               />
             </View>
-            <Text style={styles.rowValue}>₪</Text>
+            <Text style={styles.rowValue}>$</Text>
           </View>
         </View>
         <Divider />
@@ -235,7 +235,7 @@ export default function ProfileScreen() {
                 selectTextOnFocus
               />
             </View>
-            <Text style={styles.rowValue}>₪</Text>
+            <Text style={styles.rowValue}>$</Text>
           </View>
         </View>
       </Card>

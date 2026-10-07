@@ -25,6 +25,10 @@ export default function AuthScreen() {
       setError("Please fill in all fields");
       return;
     }
+    if (mode === "register" && password.length < 8) {
+      setError("Password must be at least 8 characters");
+      return;
+    }
     setLoading(true);
     try {
       if (mode === "login") {

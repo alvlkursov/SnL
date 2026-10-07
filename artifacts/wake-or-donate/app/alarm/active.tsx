@@ -197,7 +197,7 @@ export default function ActiveAlarmScreen() {
       {confirmMethod === "shake" && (
         <View style={styles.challengeContainer}>
           <Text style={styles.challengeTitle}>Shake to dismiss</Text>
-          <MaterialCommunityIcons name="cellphone-vibrate" size={64} color="#FF5A3C" />
+          <MaterialCommunityIcons name="cellphone-sound" size={64} color="#FF5A3C" />
           <View style={styles.shakeProgress}>
             {[...Array(10)].map((_, i) => (
               <View key={i} style={[styles.shakeDot, i < shakeCount && styles.shakeDotActive]} />
