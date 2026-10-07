@@ -64,7 +64,10 @@ Routes:
 - `PUT /api/alarms/:id` — update alarm
 - `DELETE /api/alarms/:id` — delete alarm
 - `POST /api/alarms/:id/dismiss` — confirm wakeup (no donation)
-- `POST /api/alarms/:id/snooze` — snooze (triggers donation)
+- `POST /api/alarms/:id/snooze` — snooze (triggers donation, max 3 per ring)
+- `GET /api/alarms/events/missed` — unacknowledged missed alarms; `POST /api/alarms/events/:id/ack`
+- `PATCH /api/auth/me` — update name / timezone
+- `POST /api/donations` — voluntary donation
 - `GET /api/charities` — list charities (with ?category= filter)
 - `GET /api/donations` — donation history
 - `GET /api/donations/stats` — statistics
@@ -76,6 +79,7 @@ Routes:
 - `alarms` — user alarms with full configuration
 - `donations` — donation history per snooze/miss event
 - `sessions` — login sessions (sha256 of token, expiry)
+- `alarm_events` — one row per alarm ring (ringing / dismissed / missed, snoozes used)
 
 ## Color Palette
 
@@ -93,4 +97,8 @@ Routes:
 - Donation amounts are tracked in the DB and displayed in stats
 - Currency: USD (`$`) everywhere
 - After pulling schema changes run `pnpm --filter @workspace/db run push` to create new tables (e.g. `sessions`)
-- Alarm notification scheduling requires native push notifications (expo-notifications) — the active alarm screen is accessible via "Test Alarm" button in the edit screen for demo purposes
+- Alarms ring via local notifications (expo-notifications, exact alarms, `alarm-v1` channel with `assets/sounds/alarm.wav`). Each ring is a burst of notifications over 10 minutes; schedule covers 7 days and is re-synced on every app open (`lib/alarmNotifications.ts`). Requires a native build (EAS), not Expo Go.
+- Server tracks each ring in `alarm_events` (`src/lib/events.ts`): a background scheduler (every 30s) opens occurrences and charges a miss (2× amount) 10 min + 5 min grace after the last ring. Max 3 snoozes per occurrence. Rules live in `src/lib/rules.ts`.
+- The scheduler runs inside the API process, so the deployment must stay running (Reserved VM, not Autoscale).
+- "Test Alarm" outside a real ring time runs in test mode: nothing is charged.
+- Standalone builds read the API base URL from `EXPO_PUBLIC_API_URL` (set per profile in `eas.json`).

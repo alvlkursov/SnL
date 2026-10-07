@@ -1,9 +1,27 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BASE_URL = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
-  : "/api";
+import { cancelAllAlarmNotifications } from "@/lib/alarmNotifications";
+
+// Standalone builds point at the deployed server; Replit dev uses its dev domain
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL
+  ? process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, "")
+  : process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
+    : "/api";
+
+const deviceTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+// Alarms are evaluated server-side in the user's local time, so keep it current
+async function reportTimezone(token: string) {
+  try {
+    await fetch(`${BASE_URL}/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ timezone: deviceTimezone() }),
+    });
+  } catch {}
+}
 
 export interface User {
   id: number;
@@ -53,6 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const userData = await res.json();
             setUser(userData);
             await AsyncStorage.setItem("auth_user", JSON.stringify(userData));
+            reportTimezone(storedToken);
           } else {
             // Token expired
             await clearAuth();
@@ -86,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(err.message ?? "Login failed");
     }
     const { user: userData, token: newToken } = await res.json();
+    reportTimezone(newToken);
     setUser(userData);
     setToken(newToken);
     await AsyncStorage.setItem("auth_token", newToken);
@@ -96,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch(`${BASE_URL}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, timezone: deviceTimezone() }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -118,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
       } catch {}
     }
+    await cancelAllAlarmNotifications();
     await clearAuth();
   }
 

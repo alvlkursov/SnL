@@ -1,15 +1,52 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Platform,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { useAlarms, type Alarm } from "@/context/AlarmContext";
+
+const CATEGORY_LABELS: Record<string, string> = { favorite: "Favorite", recommended: "Recommended", hated: "Hated" };
+
+/** Human-readable next ring time across all enabled alarms, e.g. "Tomorrow, 7:00 AM". */
+function nextAlarmText(alarms: Alarm[]): string {
+  const now = new Date();
+  let best: Date | null = null;
+  for (const alarm of alarms) {
+    if (!alarm.isEnabled) continue;
+    const [hh, mm] = alarm.time.split(":").map(Number);
+    for (let d = 0; d <= 7; d++) {
+      const at = new Date(now);
+      at.setDate(now.getDate() + d);
+      at.setHours(hh, mm, 0, 0);
+      if (at > now && alarm.days.includes(at.getDay())) {
+        if (!best || at < best) best = at;
+        break;
+      }
+    }
+  }
+  if (!best) return "None scheduled";
+  const time = best.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const tomorrow = new Date(now);
+  tomorrow.setDate(now.getDate() + 1);
+  const day = best.toDateString() === now.toDateString() ? "Today"
+    : best.toDateString() === tomorrow.toDateString() ? "Tomorrow"
+    : best.toLocaleDateString("en-US", { weekday: "long" });
+  return `${day}, ${time}`;
+}
 
 export default function MissedAlarmScreen() {
   const insets = useSafeAreaInsets();
-  const { amount = "5", fund = "Animal Shelter", nextAlarm = "Tomorrow, 7:00 AM" } =
-    useLocalSearchParams<{ amount?: string; fund?: string; nextAlarm?: string }>();
+  const { alarms, acknowledgeMissed } = useAlarms();
+  const { eventId = "", amount = "0", fund = "", label = "", category = "", donationId = "" } =
+    useLocalSearchParams<{ eventId?: string; amount?: string; fund?: string; label?: string; category?: string; donationId?: string }>();
+  const nextAlarm = useMemo(() => nextAlarmText(alarms), [alarms]);
+
+  // Seen once is enough; don't show this miss again on the next app open
+  useEffect(() => {
+    if (eventId) acknowledgeMissed(parseInt(eventId, 10)).catch(() => {});
+  }, [eventId]);
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 }]}>
@@ -20,7 +57,7 @@ export default function MissedAlarmScreen() {
 
       {/* Title */}
       <Text style={styles.title}>Alarm Missed</Text>
-      <Text style={styles.subtitle}>You didn't make it this time</Text>
+      <Text style={styles.subtitle}>{label ? `${label} — you didn't make it this time` : "You didn't make it this time"}</Text>
 
       {/* Donation card */}
       <View style={styles.donationCard}>
@@ -57,7 +94,10 @@ export default function MissedAlarmScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.ghostBtn}
-          onPress={() => router.push("/alarm/receipt")}
+          onPress={() => router.push({
+            pathname: "/alarm/receipt",
+            params: { amount, fund, category: CATEGORY_LABELS[category] ?? "Recommended", reason: "Missed alarm", donationId },
+          })}
           activeOpacity={0.7}
         >
           <Text style={styles.ghostBtnText}>View Details</Text>

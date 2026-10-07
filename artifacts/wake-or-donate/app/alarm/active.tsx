@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Vibration,
-  Platform, PanResponder, Modal,
+  Platform, Alert,
 } from "react-native";
+import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
+import { Accelerometer } from "expo-sensors";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
-import { useAlarms, Alarm } from "@/context/AlarmContext";
+import { useAlarms } from "@/context/AlarmContext";
+import { stopRinging, scheduleSnooze } from "@/lib/alarmNotifications";
+import { ringingAlarm } from "@/lib/ringingState";
 
 function MathChallenge({ onSolve }: { onSolve: () => void }) {
   const [a] = useState(Math.floor(Math.random() * 20) + 5);
@@ -55,17 +59,36 @@ const mStyles = StyleSheet.create({
   keyText: { fontSize: 22, fontFamily: "Inter_600SemiBold", color: "#F0F0FF" },
 });
 
+const SHAKES_TO_DISMISS = 10;
+const SHAKE_THRESHOLD_G = 1.8;
+const SHAKE_DEBOUNCE_MS = 250;
+
+function formatTime(date: Date) {
+  return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
 export default function ActiveAlarmScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const alarmId = parseInt(id ?? "0", 10);
   const { alarms, dismissAlarm, snoozeAlarm } = useAlarms();
-  const alarm = alarms.find(a => a.id === parseInt(id ?? "0"));
+  const alarm = alarms.find(a => a.id === alarmId);
   const insets = useSafeAreaInsets();
   const [time, setTime] = useState(new Date());
-  const [donationResult, setDonationResult] = useState<{ donated: boolean; charityName?: string; amount?: number; message: string } | null>(null);
   const [shakeCount, setShakeCount] = useState(0);
+  const [busy, setBusy] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const player = useAudioPlayer(require("../../assets/sounds/alarm.wav"));
 
+  // Ring: loud looping sound (even in silent mode) + vibration + pulsing clock
   useEffect(() => {
+    ringingAlarm.id = alarmId;
+    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: "doNotMix" })
+      .catch(() => {})
+      .finally(() => {
+        player.loop = true;
+        player.volume = 1;
+        player.play();
+      });
     const timer = setInterval(() => setTime(new Date()), 1000);
     Vibration.vibrate([500, 500, 500, 500], true);
     const pulse = Animated.loop(
@@ -79,92 +102,92 @@ export default function ActiveAlarmScreen() {
       clearInterval(timer);
       Vibration.cancel();
       pulse.stop();
+      if (ringingAlarm.id === alarmId) ringingAlarm.id = null;
     };
   }, []);
 
-  const handleDismiss = useCallback(async () => {
+  const silence = () => {
     Vibration.cancel();
-    if (alarm) {
-      const result = await dismissAlarm(alarm.id);
-      setDonationResult({ donated: false, message: result.message });
-    } else {
-      router.back();
+    try { player.pause(); } catch {}
+  };
+
+  const handleDismiss = useCallback(async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = alarm ? await dismissAlarm(alarm.id) : null;
+      silence();
+      if (alarm) await stopRinging(alarm.id);
+      router.replace({
+        pathname: "/alarm/woke-up",
+        params: { alarmName: alarm?.label ?? "Alarm", streak: String(result?.streak ?? 0) },
+      });
+    } catch (e: any) {
+      // Don't torture the user over a network error, but make clear it isn't confirmed yet
+      silence();
+      Alert.alert(
+        "Not confirmed yet",
+        `${e?.message ?? "Couldn't reach the server."}\n\nConnect to the internet and tap again — otherwise this alarm counts as missed.`,
+      );
+    } finally {
+      setBusy(false);
     }
-  }, [alarm]);
+  }, [alarm, busy]);
 
   const handleSnooze = useCallback(async () => {
-    Vibration.cancel();
-    if (alarm) {
+    if (!alarm || busy) return;
+    setBusy(true);
+    try {
       const result = await snoozeAlarm(alarm.id);
-      setDonationResult({
-        donated: result.donated,
-        charityName: result.charityName,
-        amount: result.donationAmount,
-        message: result.message,
+      silence();
+      const ringAt = new Date(result.ringAt);
+      await stopRinging(alarm.id);
+      if (!result.test) await scheduleSnooze(alarm, ringAt);
+      router.replace({
+        pathname: "/alarm/snooze-charge",
+        params: {
+          amount: String(result.donationAmount),
+          fund: result.charityName,
+          snoozeIndex: String(result.snoozeIndex),
+          snoozeLimit: String(result.snoozeLimit),
+          ringTime: formatTime(ringAt),
+          test: result.test ? "true" : "false",
+        },
       });
-    } else {
-      router.back();
+    } catch (e: any) {
+      Alert.alert("Can't snooze", e?.message ?? "Please try again.");
+    } finally {
+      setBusy(false);
     }
-  }, [alarm]);
+  }, [alarm, busy]);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gs) =>
-        Math.abs(gs.dx) > 10 || Math.abs(gs.dy) > 10,
-      onPanResponderMove: (_, gs) => {
-        const distance = Math.sqrt(gs.vx ** 2 + gs.vy ** 2);
-        if (distance > 2) {
-          setShakeCount(prev => {
-            if (prev >= 9) {
-              handleDismiss();
-              return 0;
-            }
-            return prev + 1;
-          });
-        }
-      },
-    })
-  ).current;
+  // Shake to dismiss: count distinct jolts above the threshold
+  useEffect(() => {
+    if (alarm?.confirmationMethod !== "shake" || Platform.OS === "web") return;
+    let last = 0;
+    Accelerometer.setUpdateInterval(100);
+    const sub = Accelerometer.addListener(({ x, y, z }) => {
+      const g = Math.sqrt(x * x + y * y + z * z);
+      const now = Date.now();
+      if (g > SHAKE_THRESHOLD_G && now - last > SHAKE_DEBOUNCE_MS) {
+        last = now;
+        setShakeCount(prev => Math.min(prev + 1, SHAKES_TO_DISMISS));
+      }
+    });
+    return () => sub.remove();
+  }, [alarm?.confirmationMethod]);
+
+  useEffect(() => {
+    if (shakeCount >= SHAKES_TO_DISMISS) handleDismiss();
+  }, [shakeCount]);
 
   const timeStr = time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-
-  if (donationResult) {
-    return (
-      <View style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
-        <View style={styles.resultContainer}>
-          {donationResult.donated ? (
-            <>
-              <View style={styles.resultIcon}>
-                <Feather name="heart" size={40} color="#FF5A3C" />
-              </View>
-              <Text style={styles.resultTitle}>Donation Sent!</Text>
-              <Text style={styles.resultAmount}>${donationResult.amount?.toFixed(2)}</Text>
-              <Text style={styles.resultCharity}>to {donationResult.charityName}</Text>
-              <Text style={styles.resultMsg}>Next time, wake up on time!</Text>
-            </>
-          ) : (
-            <>
-              <View style={[styles.resultIcon, { backgroundColor: "#30D15822" }]}>
-                <Feather name="sun" size={40} color="#30D158" />
-              </View>
-              <Text style={styles.resultTitle}>Good Morning!</Text>
-              <Text style={styles.resultMsg}>Great job waking up on time!</Text>
-            </>
-          )}
-          <TouchableOpacity style={styles.closeResultBtn} onPress={() => router.back()}>
-            <Text style={styles.closeResultText}>Continue</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
 
   const confirmMethod = alarm?.confirmationMethod ?? "button";
 
   return (
     <View
       style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
-      {...(confirmMethod === "shake" ? panResponder.panHandlers : {})}
     >
       {/* Clock */}
       <Animated.View style={[styles.clockContainer, { transform: [{ scale: pulseAnim }] }]}>
@@ -219,7 +242,7 @@ export default function ActiveAlarmScreen() {
 
       {/* Snooze */}
       {alarm?.snoozeEnabled && (
-        <TouchableOpacity style={styles.snoozeBtn} onPress={handleSnooze}>
+        <TouchableOpacity style={styles.snoozeBtn} onPress={handleSnooze} disabled={busy}>
           <MaterialCommunityIcons name="alarm-snooze" size={18} color="#FF9F0A" />
           <Text style={styles.snoozeBtnText}>
             Snooze {alarm.snoozeDurationMinutes}m (donate ${alarm.donationAmount})
@@ -261,18 +284,4 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#FF9F0A44",
   },
   snoozeBtnText: { fontSize: 14, fontFamily: "Inter_500Medium", color: "#FF9F0A" },
-  resultContainer: { alignItems: "center", gap: 16 },
-  resultIcon: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: "#FF5A3C22", borderWidth: 2, borderColor: "#FF5A3C",
-    alignItems: "center", justifyContent: "center",
-  },
-  resultTitle: { fontSize: 28, fontFamily: "Inter_700Bold", color: "#F0F0FF" },
-  resultAmount: { fontSize: 44, fontFamily: "Inter_700Bold", color: "#FF5A3C" },
-  resultCharity: { fontSize: 16, color: "#8888AA", fontFamily: "Inter_500Medium" },
-  resultMsg: { fontSize: 14, color: "#8888AA", fontFamily: "Inter_400Regular", textAlign: "center" },
-  closeResultBtn: {
-    backgroundColor: "#FF5A3C", borderRadius: 16, paddingHorizontal: 40, paddingVertical: 16, marginTop: 16,
-  },
-  closeResultText: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#fff" },
 });

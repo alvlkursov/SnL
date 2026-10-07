@@ -23,15 +23,16 @@ export default function DonationReceiptScreen() {
     category = "Favorite",
     reason = "Missed alarm",
     voluntary = "false",
+    donationId = "",
   } = useLocalSearchParams<{
-    amount?: string; fund?: string; category?: string; reason?: string; voluntary?: string;
+    amount?: string; fund?: string; category?: string; reason?: string; voluntary?: string; donationId?: string;
   }>();
 
   const isVoluntary = voluntary === "true";
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const ref = "WD-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+  const ref = donationId ? `WD-${donationId.padStart(6, "0")}` : "—";
 
   const categoryColor =
     category === "Favorite" ? "#30D158" :
