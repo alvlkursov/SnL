@@ -5,8 +5,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useAuth } from "@/context/AuthContext";
+import * as Linking from "expo-linking";
+import Constants from "expo-constants";
+import { useAuth, publicPageUrl } from "@/context/AuthContext";
 import { router } from "expo-router";
+
+const SUPPORT_EMAIL = "al.vl.kursov@gmail.com";
 
 const CHARITIES = [
   "Animal Shelter", "Red Cross", "UNICEF", "WWF", "Doctors Without Borders",
@@ -53,7 +57,11 @@ function Divider() {
 }
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, deleteAccount } = useAuth();
+  const [showDelete, setShowDelete] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const insets = useSafeAreaInsets();
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 84);
@@ -83,6 +91,35 @@ export default function ProfileScreen() {
 
   const handleSignIn = () => router.replace("/auth");
 
+  const closeDelete = () => {
+    setShowDelete(false);
+    setDeletePassword("");
+    setDeleteError("");
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePassword) { setDeleteError("Enter your password"); return; }
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteAccount(deletePassword);
+      closeDelete();
+      router.replace("/auth");
+    } catch (e: any) {
+      setDeleteError(e?.message ?? "Could not delete account");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const openLegal = (label: string) => {
+    if (label === "Privacy Policy") Linking.openURL(publicPageUrl("/privacy"));
+    else if (label === "Contact Support") Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=WakeOrDonate%20support`);
+    else if (label === "About") {
+      Alert.alert("WakeOrDonate", `Version ${Constants.expoConfig?.version ?? "1.0.0"}\nPublished by Aleksandr Kursov`);
+    }
+  };
+
   const toggleFavorite = (charity: string) => {
     setFavoriteCharities(prev => {
       if (prev.includes(charity)) return prev.filter(c => c !== charity);
@@ -110,7 +147,11 @@ export default function ProfileScreen() {
         <Row icon="mail" label="Email" value={user?.email ?? "—"} />
         <Divider />
         {user ? (
-          <Row icon="log-out" label="Sign Out" onPress={handleLogout} danger />
+          <>
+            <Row icon="log-out" label="Sign Out" onPress={handleLogout} danger />
+            <Divider />
+            <Row icon="trash-2" label="Delete Account" onPress={() => setShowDelete(true)} danger />
+          </>
         ) : (
           <Row icon="log-in" label="Sign In" onPress={handleSignIn} />
         )}
@@ -245,9 +286,6 @@ export default function ProfileScreen() {
       <Card>
         {[
           { label: "Privacy Policy", icon: "shield" },
-          { label: "Terms of Use", icon: "file-text" },
-          { label: "Donation Policy", icon: "gift" },
-          { label: "Refund Policy", icon: "refresh-cw" },
           { label: "About", icon: "info" },
           { label: "Contact Support", icon: "message-circle" },
         ].map((item, i, arr) => (
@@ -255,12 +293,42 @@ export default function ProfileScreen() {
             <Row
               icon={item.icon}
               label={item.label}
-              onPress={() => Alert.alert(item.label, "Coming soon.")}
+              onPress={() => openLegal(item.label)}
             />
             {i < arr.length - 1 && <Divider />}
           </React.Fragment>
         ))}
       </Card>
+
+      {/* ── Delete Account ── */}
+      <Modal visible={showDelete} transparent animationType="fade" onRequestClose={closeDelete}>
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteDialog}>
+            <Text style={styles.deleteTitle}>Delete account?</Text>
+            <Text style={styles.deleteText}>
+              This permanently deletes your profile, alarms, alarm history and donation records. It cannot be undone.
+            </Text>
+            <TextInput
+              style={styles.deleteInput}
+              placeholder="Your password"
+              placeholderTextColor="#8888AA"
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              autoFocus
+            />
+            {!!deleteError && <Text style={styles.deleteError}>{deleteError}</Text>}
+            <View style={styles.deleteActions}>
+              <TouchableOpacity style={styles.deleteCancel} onPress={closeDelete} disabled={deleting}>
+                <Text style={styles.deleteCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteConfirm} onPress={confirmDelete} disabled={deleting}>
+                <Text style={styles.deleteConfirmText}>{deleting ? "Deleting…" : "Delete"}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Default Charity Picker ── */}
       <Modal visible={showDefaultCharityPicker} transparent animationType="slide">
@@ -376,4 +444,18 @@ const styles = StyleSheet.create({
     margin: 16, backgroundColor: "#FF5A3C", borderRadius: 14, padding: 14, alignItems: "center",
   },
   doneBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#FFF" },
+  deleteOverlay: { flex: 1, backgroundColor: "#000000AA", justifyContent: "center", padding: 24 },
+  deleteDialog: { backgroundColor: "#1C1C2E", borderRadius: 20, padding: 20, gap: 12, borderWidth: 1, borderColor: "#2A2A40" },
+  deleteTitle: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#F0F0FF" },
+  deleteText: { fontSize: 14, fontFamily: "Inter_400Regular", color: "#8888AA", lineHeight: 20 },
+  deleteInput: {
+    backgroundColor: "#141420", borderRadius: 12, borderWidth: 1, borderColor: "#2A2A40",
+    paddingHorizontal: 14, paddingVertical: 12, color: "#F0F0FF", fontFamily: "Inter_400Regular", fontSize: 15,
+  },
+  deleteError: { fontSize: 13, fontFamily: "Inter_500Medium", color: "#FF453A" },
+  deleteActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  deleteCancel: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: "#2A2A40", alignItems: "center" },
+  deleteCancelText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#F0F0FF" },
+  deleteConfirm: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: "#FF453A", alignItems: "center" },
+  deleteConfirmText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#fff" },
 });

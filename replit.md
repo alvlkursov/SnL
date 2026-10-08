@@ -68,6 +68,8 @@ Routes:
 - `GET /api/alarms/events/missed` — unacknowledged missed alarms; `POST /api/alarms/events/:id/ack`
 - `PATCH /api/auth/me` — update name / timezone
 - `POST /api/donations` — voluntary donation
+- `DELETE /api/auth/me` — delete own account (password required); `POST /api/auth/delete-account` — same from the web page
+- `GET /api/privacy`, `GET /api/delete-account` — public privacy policy and account-deletion pages (publisher details in `src/lib/legal.ts`)
 - `GET /api/charities` — list charities (with ?category= filter)
 - `GET /api/donations` — donation history
 - `GET /api/donations/stats` — statistics

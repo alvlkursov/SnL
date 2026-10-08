@@ -41,6 +41,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   refreshUser: () => Promise<void>;
 }
 
@@ -142,6 +143,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearAuth();
   }
 
+  async function deleteAccount(password: string) {
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message ?? "Could not delete account");
+    }
+    await cancelAllAlarmNotifications();
+    await clearAuth();
+  }
+
   async function refreshUser() {
     if (!token) return;
     try {
@@ -157,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, deleteAccount, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -167,6 +182,14 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+/** Absolute URL of a public page served by the API server (privacy policy etc.). */
+export function publicPageUrl(path: string): string {
+  const base = BASE_URL.startsWith("/") && typeof window !== "undefined" && window.location
+    ? `${window.location.origin}${BASE_URL}`
+    : BASE_URL;
+  return `${base}${path}`;
 }
 
 export { BASE_URL };
