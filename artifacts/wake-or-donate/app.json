@@ -29,7 +29,9 @@
         "android.permission.USE_EXACT_ALARM",
         "android.permission.RECEIVE_BOOT_COMPLETED",
         "android.permission.VIBRATE",
-        "android.permission.WAKE_LOCK"
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -69,6 +71,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "b8e7dafc-52d2-4797-9c33-36d34bcb8340"
+      }
+    },
+    "owner": "sekkka"
   }
 }
