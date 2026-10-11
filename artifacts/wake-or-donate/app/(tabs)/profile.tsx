@@ -10,6 +10,7 @@ import Constants from "expo-constants";
 import { useAuth, publicPageUrl, BASE_URL } from "@/context/AuthContext";
 import { FavoriteCharitiesPicker, MAX_FAVORITES, type CharityInfo } from "@/components/FavoriteCharitiesPicker";
 import { confirmAction } from "@/lib/confirm";
+import { AlarmClock } from "@/modules/alarm-clock";
 import { router } from "expo-router";
 
 const SUPPORT_EMAIL = "al.vl.kursov@gmail.com";
@@ -110,7 +111,11 @@ export default function ProfileScreen() {
     if (label === "Privacy Policy") Linking.openURL(publicPageUrl("/privacy"));
     else if (label === "Contact Support") Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=WakeOrDonate%20support`);
     else if (label === "About") {
-      Alert.alert("WakeOrDonate", `Version ${Constants.expoConfig?.version ?? "1.0.0"}\nPublished by Aleksandr Kursov`);
+      const engine = Platform.OS !== "android" ? "notifications" : AlarmClock ? "native alarm clock" : "MISSING — notifications fallback";
+      Alert.alert(
+        "WakeOrDonate",
+        `Version ${Constants.expoConfig?.version ?? "1.0.0"}\nAlarm engine: ${engine}\nPublished by Aleksandr Kursov`,
+      );
     }
   };
 

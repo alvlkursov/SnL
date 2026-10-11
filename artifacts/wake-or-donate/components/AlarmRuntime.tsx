@@ -47,10 +47,10 @@ export function AlarmRuntime() {
     (async () => {
       await setupAlarmNotifications().catch(() => {});
       // First sign-in on Android: walk the user through the permissions alarms need
-      if (Platform.OS !== "android" || !AlarmClock) return;
+      if (Platform.OS !== "android") return;
       const seen = await AsyncStorage.getItem(ALARM_SETUP_SEEN_KEY).catch(() => "1");
-      const status = AlarmClock.getStatus();
-      const missing = !status.notifications || !status.exactAlarms || !status.fullScreen;
+      const status = AlarmClock?.getStatus();
+      const missing = !status || !status.notifications || !status.exactAlarms || !status.fullScreen;
       if ((!seen || missing) && ringingAlarm.id === null) router.push("/alarm-setup");
     })();
   }, [token]);

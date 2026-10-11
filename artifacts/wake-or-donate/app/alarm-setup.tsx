@@ -103,6 +103,19 @@ export default function AlarmSetupScreen() {
         Phones try to save battery by silencing apps. Go through each step once so your alarm always rings and opens full screen.
       </Text>
 
+      {Platform.OS === "android" && !AlarmClock && (
+        <View style={[styles.card, { borderColor: "#FF453A" }]}>
+          <Feather name="alert-triangle" size={20} color="#FF453A" />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardTitle}>Alarm engine missing</Text>
+            <Text style={styles.cardText}>
+              This build doesn't include the native alarm clock, so alarms fall back to plain notifications
+              (no full screen, may be silenced). Install the latest build.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {Platform.OS !== "android" || !status ? (
         <Text style={styles.subtitle}>Nothing to set up on this device.</Text>
       ) : (

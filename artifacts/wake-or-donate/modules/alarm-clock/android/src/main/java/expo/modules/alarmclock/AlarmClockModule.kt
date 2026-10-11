@@ -1,0 +1,94 @@
+package expo.modules.alarmclock
+
+import android.app.NotificationManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import expo.modules.kotlin.exception.Exceptions
+import expo.modules.kotlin.modules.Module
+import expo.modules.kotlin.modules.ModuleDefinition
+import org.json.JSONArray
+
+class AlarmClockModule : Module() {
+  private val context: Context
+    get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
+
+  override fun definition() = ModuleDefinition {
+    Name("AlarmClock")
+
+    // entriesJson: [{ key, alarmId, at, title, body }]
+    Function("setSchedule") { entriesJson: String ->
+      val array = JSONArray(entriesJson)
+      val entries = (0 until array.length()).map { AlarmEntry.fromJson(array.getJSONObject(it)) }
+      AlarmScheduler.apply(context, entries)
+    }
+
+    Function("stopRinging") { alarmId: Int ->
+      RingNotification.cancel(context, alarmId)
+      AlarmLockScreen.release()
+    }
+
+    Function("getStatus") {
+      val notifications = (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+        .areNotificationsEnabled()
+      mapOf(
+        "notifications" to notifications,
+        "exactAlarms" to AlarmScheduler.canScheduleExact(context),
+        "fullScreen" to RingNotification.canUseFullScreen(context),
+        "isXiaomi" to isXiaomi(),
+      )
+    }
+
+    // target: app | notifications | exactAlarms | fullScreen | battery | xiaomiAutostart | xiaomiPermissions
+    Function("openSettings") { target: String ->
+      val pkg = context.packageName
+      val candidates = when (target) {
+        "notifications" -> listOf(
+          Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, pkg),
+        )
+        "exactAlarms" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+          listOf(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$pkg")))
+        } else emptyList()
+        "fullScreen" -> if (Build.VERSION.SDK_INT >= 34) {
+          listOf(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$pkg")))
+        } else emptyList()
+        "battery" -> listOf(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        "xiaomiAutostart" -> listOf(
+          Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
+        )
+        "xiaomiPermissions" -> listOf(
+          Intent("miui.intent.action.APP_PERM_EDITOR")
+            .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+            .putExtra("extra_pkgname", pkg),
+          Intent("miui.intent.action.APP_PERM_EDITOR")
+            .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.AppPermissionsEditorActivity")
+            .putExtra("extra_pkgname", pkg),
+        )
+        else -> emptyList()
+      }
+      // Fall back to the app's system settings page if the specific screen doesn't exist
+      val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
+      openFirst(candidates + appDetails)
+    }
+  }
+
+  private fun isXiaomi(): Boolean {
+    val brand = "${Build.MANUFACTURER} ${Build.BRAND}".lowercase()
+    return listOf("xiaomi", "redmi", "poco").any { brand.contains(it) }
+  }
+
+  private fun openFirst(intents: List<Intent>): Boolean {
+    for (intent in intents) {
+      try {
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        return true
+      } catch (_: Exception) {
+        // Screen not available on this device/ROM; try the next one
+      }
+    }
+    return false
+  }
+}
