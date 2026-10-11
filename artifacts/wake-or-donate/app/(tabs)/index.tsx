@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Platform, Switch, RefreshControl,
@@ -9,6 +9,8 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAlarms, Alarm } from "@/context/AlarmContext";
 import { useAuth } from "@/context/AuthContext";
 import { confirmAction } from "@/lib/confirm";
+import { subscribeSnoozes } from "@/lib/alarmNotifications";
+import { nextRingTime, formatCountdown, formatRingDay } from "@/lib/alarmTimes";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const CATEGORY_COLORS = {
@@ -28,8 +30,35 @@ const CONFIRM_ICONS: Record<string, string> = {
   qr: "qrcode-scan",
 };
 
-function AlarmCard({ alarm, onToggle, onPress, onDelete }: {
+/** "Snoozed · rings in 4:32" for a snoozed alarm, otherwise when it rings next. */
+function RingStatus({ alarm, snoozeAt, now }: { alarm: Alarm; snoozeAt?: number; now: Date }) {
+  if (!alarm.isEnabled) return null;
+  if (snoozeAt && snoozeAt > now.getTime()) {
+    return (
+      <View style={styles.statusRow}>
+        <MaterialCommunityIcons name="alarm-snooze" size={14} color="#FF9F0A" />
+        <Text style={[styles.statusText, { color: "#FF9F0A" }]}>
+          Snoozed · rings in {formatCountdown(snoozeAt - now.getTime())}
+        </Text>
+      </View>
+    );
+  }
+  const next = nextRingTime(alarm, now);
+  if (!next) return null;
+  return (
+    <View style={styles.statusRow}>
+      <Feather name="clock" size={12} color="#8888AA" />
+      <Text style={styles.statusText}>
+        {formatRingDay(next, now)} · in {formatCountdown(next.getTime() - now.getTime())}
+      </Text>
+    </View>
+  );
+}
+
+function AlarmCard({ alarm, snoozeAt, now, onToggle, onPress, onDelete }: {
   alarm: Alarm;
+  snoozeAt?: number;
+  now: Date;
   onToggle: (id: number, enabled: boolean) => void;
   onPress: (alarm: Alarm) => void;
   onDelete: (id: number) => void;
@@ -49,6 +78,7 @@ function AlarmCard({ alarm, onToggle, onPress, onDelete }: {
             {alarm.time}
           </Text>
           <Text style={styles.alarmLabel}>{alarm.label}</Text>
+          <RingStatus alarm={alarm} snoozeAt={snoozeAt} now={now} />
           <View style={styles.alarmMeta}>
             {/* Days */}
             <View style={styles.dayRow}>
@@ -105,6 +135,16 @@ export default function AlarmsScreen() {
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [refreshing, setRefreshing] = useState(false);
+  const [snoozes, setSnoozes] = useState<Record<string, number>>({});
+  const [now, setNow] = useState(new Date());
+
+  useEffect(() => subscribeSnoozes(setSnoozes), []);
+  // Tick every second while a snooze countdown is visible, otherwise every 30s
+  const snoozing = Object.values(snoozes).some(at => at > now.getTime());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), snoozing ? 1000 : 30_000);
+    return () => clearInterval(timer);
+  }, [snoozing]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -149,6 +189,8 @@ export default function AlarmsScreen() {
         renderItem={({ item }) => (
           <AlarmCard
             alarm={item}
+            snoozeAt={snoozes[item.id]}
+            now={now}
             onToggle={handleToggle}
             onPress={handlePress}
             onDelete={handleDelete}
@@ -212,7 +254,9 @@ const styles = StyleSheet.create({
   alarmRight: { alignItems: "flex-end", gap: 8 },
   alarmTime: { fontSize: 36, fontFamily: "Inter_700Bold", color: "#F0F0FF", letterSpacing: -1 },
   alarmTimeDisabled: { color: "#8888AA" },
-  alarmLabel: { fontSize: 14, color: "#8888AA", fontFamily: "Inter_400Regular", marginBottom: 8 },
+  alarmLabel: { fontSize: 14, color: "#8888AA", fontFamily: "Inter_400Regular", marginBottom: 6 },
+  statusRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
+  statusText: { fontSize: 13, color: "#8888AA", fontFamily: "Inter_500Medium", fontVariant: ["tabular-nums"] },
   alarmMeta: { marginBottom: 8 },
   dayRow: { flexDirection: "row", gap: 4 },
   dayDot: {

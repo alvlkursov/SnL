@@ -37,7 +37,7 @@ export default function SnoozeChargeScreen() {
       {/* Title */}
       <Text style={styles.title}>{auto === "true" ? "Time's up — snoozed" : "Snoozed"}</Text>
       <Text style={styles.subtitle}>
-        {isTest ? "Test alarm — nothing was charged" : `Alarm will ring again at ${ringTime}`}
+        {isTest ? `Test alarm — nothing charged. Rings again at ${ringTime}` : `Alarm will ring again at ${ringTime}`}
       </Text>
 
       {/* Donation card */}

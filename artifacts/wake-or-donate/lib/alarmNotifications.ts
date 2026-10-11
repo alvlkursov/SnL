@@ -79,10 +79,21 @@ async function readSnoozes(): Promise<Record<string, number>> {
   }
 }
 
+type SnoozeListener = (snoozes: Record<string, number>) => void;
+const snoozeListeners = new Set<SnoozeListener>();
+
 async function writeSnoozes(snoozes: Record<string, number>) {
   const now = Date.now();
   const pruned = Object.fromEntries(Object.entries(snoozes).filter(([, at]) => at > now));
   await AsyncStorage.setItem(SNOOZE_KEY, JSON.stringify(pruned));
+  snoozeListeners.forEach(listener => listener(pruned));
+}
+
+/** Pending snooze ring times by alarm id; the listener is called on every change. */
+export function subscribeSnoozes(listener: SnoozeListener): () => void {
+  snoozeListeners.add(listener);
+  readSnoozes().then(listener).catch(() => {});
+  return () => { snoozeListeners.delete(listener); };
 }
 
 /** Upcoming ring starts of an alarm (future only, so a ring already in progress is never re-added). */
@@ -265,10 +276,15 @@ export function stopRinging(alarmId: number, opts: { clearSnooze?: boolean } = {
 
 /** Rings the alarm again at [ringAt]. */
 export function scheduleSnooze(alarm: AlarmInfo, ringAt: Date): Promise<void> {
-  return enqueue(async () => {
+  const remember = async () => {
     const snoozes = await readSnoozes();
     snoozes[alarm.id] = ringAt.getTime();
     await writeSnoozes(snoozes);
+  };
+  // Web preview can't ring, but still shows the snooze countdown
+  if (Platform.OS === "web") return remember();
+  return enqueue(async () => {
+    await remember();
     await applySchedule();
   });
 }

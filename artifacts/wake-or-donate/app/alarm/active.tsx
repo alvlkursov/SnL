@@ -190,9 +190,8 @@ export default function ActiveAlarmScreen() {
       silence();
       const nextRingAt = new Date(result.ringAt);
       await stopRinging(alarmId);
-      if (!result.test) {
-        await scheduleSnooze({ ...alarmInfo, donationAmount: result.donationAmount }, nextRingAt);
-      }
+      // Always ring again; the server alone decides whether the snooze costs money
+      await scheduleSnooze({ ...alarmInfo, donationAmount: result.donationAmount }, nextRingAt);
       router.replace({
         pathname: "/alarm/snooze-charge",
         params: {
