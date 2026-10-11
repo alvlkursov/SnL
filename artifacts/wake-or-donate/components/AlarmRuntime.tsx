@@ -7,7 +7,6 @@ import { useAlarms } from "@/context/AlarmContext";
 import { isAlarmData, setupAlarmNotifications, ALARM_SETUP_SEEN_KEY } from "@/lib/alarmNotifications";
 import { ringingAlarm } from "@/lib/ringingState";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AlarmClock } from "@/modules/alarm-clock";
 
 // Ignore taps on notifications older than this (e.g. a stale one restored after restart)
 const MAX_RESPONSE_AGE_MS = 30 * 60_000;
@@ -46,13 +45,10 @@ export function AlarmRuntime() {
     if (!token) return;
     (async () => {
       await setupAlarmNotifications().catch(() => {});
-      // First sign-in on Android: walk the user through the permissions alarms need
+      // Walk the user through alarm permissions once; afterwards it lives in Profile > Alarm setup
       if (Platform.OS !== "android") return;
       const seen = await AsyncStorage.getItem(ALARM_SETUP_SEEN_KEY).catch(() => "1");
-      const status = AlarmClock?.getStatus();
-      const missing = !status || !status.notifications || !status.exactAlarms || !status.fullScreen
-        || status.overlay === false;
-      if ((!seen || missing) && ringingAlarm.id === null) router.push("/alarm-setup");
+      if (!seen && ringingAlarm.id === null) router.push("/alarm-setup");
     })();
   }, [token]);
 

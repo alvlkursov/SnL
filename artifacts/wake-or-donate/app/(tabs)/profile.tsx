@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   Platform, Alert, TextInput, Modal,
@@ -11,7 +11,7 @@ import { useAuth, publicPageUrl, BASE_URL } from "@/context/AuthContext";
 import { FavoriteCharitiesPicker, MAX_FAVORITES, type CharityInfo } from "@/components/FavoriteCharitiesPicker";
 import { confirmAction } from "@/lib/confirm";
 import { AlarmClock } from "@/modules/alarm-clock";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 
 const SUPPORT_EMAIL = "al.vl.kursov@gmail.com";
 
@@ -68,6 +68,13 @@ export default function ProfileScreen() {
   const [dailyLimit, setDailyLimit] = useState("20");
   const [monthlyLimit, setMonthlyLimit] = useState("200");
   const [favoriteCharities, setFavoriteCharities] = useState<CharityInfo[]>([]);
+  // Re-checked whenever the profile is shown (the user may have changed settings meanwhile)
+  const [setupIncomplete, setSetupIncomplete] = useState(false);
+  useFocusEffect(useCallback(() => {
+    const status = AlarmClock?.getStatus();
+    setSetupIncomplete(!!status && (!status.notifications || !status.exactAlarms || !status.fullScreen
+      || status.overlay === false || status.batteryUnrestricted === false));
+  }, []));
   const [showFavoritePicker, setShowFavoritePicker] = useState(false);
 
   useEffect(() => {
@@ -139,7 +146,14 @@ export default function ProfileScreen() {
           <>
             {Platform.OS === "android" && (
               <>
-                <Row icon="bell" label="Alarm setup" onPress={() => router.push("/alarm-setup")} />
+                <Row
+                  icon="bell"
+                  label="Alarm setup"
+                  onPress={() => router.push("/alarm-setup")}
+                  right={setupIncomplete ? (
+                    <View style={styles.setupBadge}><Text style={styles.setupBadgeText}>Needs attention</Text></View>
+                  ) : undefined}
+                />
                 <Divider />
               </>
             )}
@@ -405,4 +419,6 @@ const styles = StyleSheet.create({
   deleteCancelText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#F0F0FF" },
   deleteConfirm: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: "#FF453A", alignItems: "center" },
   deleteConfirmText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  setupBadge: { backgroundColor: "#FF453A22", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  setupBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#FF453A" },
 });
