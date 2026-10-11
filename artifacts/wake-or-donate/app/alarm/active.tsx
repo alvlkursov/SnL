@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Vibration,
   Platform, Alert, ActivityIndicator,
@@ -48,7 +48,7 @@ function MathChallenge({ onSolve }: { onSolve: () => void }) {
 }
 
 const mStyles = StyleSheet.create({
-  container: { alignItems: "center", gap: 16 },
+  container: { alignItems: "center", gap: 12 },
   question: { fontSize: 40, fontFamily: "Inter_700Bold", color: "#F0F0FF" },
   answer: { fontSize: 32, fontFamily: "Inter_600SemiBold", color: "#FF5A3C", minHeight: 40 },
   keypad: { flexDirection: "row", flexWrap: "wrap", width: 240, gap: 8, justifyContent: "center" },
@@ -63,6 +63,8 @@ const mStyles = StyleSheet.create({
 const SHAKES_TO_DISMISS = 10;
 const SHAKE_THRESHOLD_G = 1.8;
 const SHAKE_DEBOUNCE_MS = 250;
+// After tapping "Wake up" the user has this long to prove it, otherwise the alarm snoozes
+const CHALLENGE_SECONDS = 30;
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -73,26 +75,32 @@ export default function ActiveAlarmScreen() {
   const alarmId = parseInt(id ?? "0", 10);
   const { alarms, dismissAlarm, snoozeAlarm } = useAlarms();
   const alarm = alarms.find(a => a.id === alarmId);
+  const insets = useSafeAreaInsets();
+  const [time, setTime] = useState(new Date());
+  // ringing: Snooze / Wake up choice. challenge: proving you're awake against the clock
+  const [phase, setPhase] = useState<"ringing" | "challenge">("ringing");
+  const [secondsLeft, setSecondsLeft] = useState(CHALLENGE_SECONDS);
+  const [challengeKey, setChallengeKey] = useState(0);
+  const [shakeCount, setShakeCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [snoozeBlocked, setSnoozeBlocked] = useState(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const player = useAudioPlayer(require("../../assets/sounds/alarm.wav"));
   // Opened from the lock screen on a cold start, the alarm list may still be loading:
-  // wait briefly so the right confirmation method (math, shake…) is shown
+  // wait briefly so the right confirmation method (math, shake…) is used
   const [waitedForAlarm, setWaitedForAlarm] = useState(false);
-  useEffect(() => {
-    const t = setTimeout(() => setWaitedForAlarm(true), 6000);
-    return () => clearTimeout(t);
-  }, []);
   const ready = !!alarm || waitedForAlarm;
   // A real ring is already sounding from the native alarm clock; a test ring is not
   const playInApp = !nativeAlarmsAvailable || test === "1";
-  const insets = useSafeAreaInsets();
-  const [time, setTime] = useState(new Date());
-  const [shakeCount, setShakeCount] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const player = useAudioPlayer(require("../../assets/sounds/alarm.wav"));
+
+  const confirmMethod = alarm?.confirmationMethod ?? "button";
+  const canSnooze = !!alarm?.snoozeEnabled && !snoozeBlocked;
+  const alarmInfo = { id: alarmId, label: alarm?.label ?? "Alarm", donationAmount: alarm?.donationAmount ?? 0 };
 
   // Ring: loud looping sound (even in silent mode) + vibration + pulsing clock
   useEffect(() => {
     ringingAlarm.id = alarmId;
+    const loadTimer = setTimeout(() => setWaitedForAlarm(true), 6000);
     if (playInApp) {
       setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: "doNotMix" })
         .catch(() => {})
@@ -112,6 +120,7 @@ export default function ActiveAlarmScreen() {
     );
     pulse.start();
     return () => {
+      clearTimeout(loadTimer);
       clearInterval(timer);
       Vibration.cancel();
       pulse.stop();
@@ -124,9 +133,7 @@ export default function ActiveAlarmScreen() {
     try { player.pause(); } catch {}
   };
 
-  const alarmInfo = { id: alarmId, label: alarm?.label ?? "Alarm", donationAmount: alarm?.donationAmount ?? 0 };
-
-  const handleDismiss = useCallback(async () => {
+  const handleDismiss = async () => {
     if (busy) return;
     setBusy(true);
     try {
@@ -143,14 +150,15 @@ export default function ActiveAlarmScreen() {
       if (alarmId) AlarmClock?.cancelRing(alarmId);
       Alert.alert(
         "Not confirmed yet",
-        `${e?.message ?? "Couldn't reach the server."}\n\nConnect to the internet and tap again — otherwise this alarm counts as missed.`,
+        `${e?.message ?? "Couldn't reach the server."}\n\nConnect to the internet and try again — otherwise this alarm counts as missed.`,
       );
+      backToRinging();
     } finally {
       setBusy(false);
     }
-  }, [alarmId, alarm, busy]);
+  };
 
-  const handleSnooze = useCallback(async () => {
+  const handleSnooze = async (auto = false) => {
     if (!alarmId || busy) return;
     setBusy(true);
     try {
@@ -170,18 +178,59 @@ export default function ActiveAlarmScreen() {
           snoozeLimit: String(result.snoozeLimit),
           ringTime: formatTime(ringAt),
           test: result.test ? "true" : "false",
+          auto: auto ? "true" : "false",
         },
       });
     } catch (e: any) {
-      Alert.alert("Can't snooze", e?.message ?? "Please try again.");
+      // Out of snoozes (or offline): the alarm keeps ringing until the user proves they're up
+      setSnoozeBlocked(true);
+      backToRinging();
+      Alert.alert(auto ? "Time's up" : "Can't snooze", e?.message ?? "Please try again.");
     } finally {
       setBusy(false);
     }
-  }, [alarmId, alarm, busy]);
+  };
+
+  // Timers call the latest handlers, not the ones captured when they were set up
+  const handlers = useRef({ handleDismiss, handleSnooze });
+  handlers.current = { handleDismiss, handleSnooze };
+
+  const backToRinging = () => {
+    setPhase("ringing");
+    setShakeCount(0);
+  };
+
+  const startChallenge = () => {
+    if (confirmMethod === "button") {
+      handlers.current.handleDismiss();
+      return;
+    }
+    setSecondsLeft(CHALLENGE_SECONDS);
+    setShakeCount(0);
+    setChallengeKey(k => k + 1); // fresh math problem every attempt
+    setPhase("challenge");
+  };
+
+  // 30-second countdown: failing to prove you're awake snoozes (and donates)
+  useEffect(() => {
+    if (phase !== "challenge") return;
+    const timer = setInterval(() => {
+      setSecondsLeft(s => {
+        if (s <= 1) {
+          clearInterval(timer);
+          if (canSnooze) handlers.current.handleSnooze(true);
+          else backToRinging();
+          return 0;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [phase, challengeKey, canSnooze]);
 
   // Shake to dismiss: count distinct jolts above the threshold
   useEffect(() => {
-    if (alarm?.confirmationMethod !== "shake" || Platform.OS === "web") return;
+    if (phase !== "challenge" || confirmMethod !== "shake" || Platform.OS === "web") return;
     let last = 0;
     Accelerometer.setUpdateInterval(100);
     const sub = Accelerometer.addListener(({ x, y, z }) => {
@@ -193,20 +242,61 @@ export default function ActiveAlarmScreen() {
       }
     });
     return () => sub.remove();
-  }, [alarm?.confirmationMethod]);
+  }, [phase, confirmMethod]);
 
   useEffect(() => {
-    if (shakeCount >= SHAKES_TO_DISMISS) handleDismiss();
+    if (shakeCount >= SHAKES_TO_DISMISS) handlers.current.handleDismiss();
   }, [shakeCount]);
 
   const timeStr = time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+  const amount = alarm?.donationAmount ?? 0;
 
-  const confirmMethod = ready ? (alarm?.confirmationMethod ?? "button") : null;
+  if (phase === "challenge") {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 20 }]}>
+        <View style={styles.challengeHeader}>
+          <Text style={styles.challengeTitle}>Prove you're awake</Text>
+          <View style={[styles.countdownPill, secondsLeft <= 10 && styles.countdownPillUrgent]}>
+            <Feather name="clock" size={14} color={secondsLeft <= 10 ? "#FF453A" : "#FF9F0A"} />
+            <Text style={[styles.countdownText, secondsLeft <= 10 && { color: "#FF453A" }]}>{secondsLeft}s</Text>
+          </View>
+          <Text style={styles.challengeHint}>
+            {canSnooze ? `Not done in time = automatic snooze and $${amount} donation` : "No snoozes left — the alarm keeps ringing"}
+          </Text>
+        </View>
+
+        {busy && <ActivityIndicator size="large" color="#FF5A3C" />}
+        {!busy && confirmMethod === "math" && <MathChallenge key={challengeKey} onSolve={() => handlers.current.handleDismiss()} />}
+        {!busy && confirmMethod === "shake" && (
+          <View style={styles.challengeBody}>
+            <MaterialCommunityIcons name="cellphone-sound" size={64} color="#FF5A3C" />
+            <Text style={styles.challengeBodyTitle}>Shake your phone</Text>
+            <View style={styles.shakeProgress}>
+              {[...Array(SHAKES_TO_DISMISS)].map((_, i) => (
+                <View key={i} style={[styles.shakeDot, i < shakeCount && styles.shakeDotActive]} />
+              ))}
+            </View>
+          </View>
+        )}
+        {!busy && confirmMethod === "qr" && (
+          <View style={styles.challengeBody}>
+            <MaterialCommunityIcons name="qrcode-scan" size={64} color="#FF5A3C" />
+            <Text style={styles.challengeBodyTitle}>Get out of bed to scan your QR code</Text>
+            <TouchableOpacity onPress={() => handlers.current.handleDismiss()}>
+              <Text style={styles.qrFallbackText}>QR scanning isn't set up yet — tap to confirm</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.backLink} onPress={backToRinging} disabled={busy}>
+          <Text style={styles.backLinkText}>Back</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
-    <View
-      style={[styles.container, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}
-    >
+    <View style={[styles.container, { paddingTop: insets.top + 32, paddingBottom: insets.bottom + 24 }]}>
       {/* Clock */}
       <Animated.View style={[styles.clockContainer, { transform: [{ scale: pulseAnim }] }]}>
         <MaterialCommunityIcons name="alarm" size={40} color="#FF5A3C" style={{ marginBottom: 8 }} />
@@ -214,67 +304,50 @@ export default function ActiveAlarmScreen() {
         <Text style={styles.alarmLabel}>{alarm?.label ?? "Wake Up!"}</Text>
       </Animated.View>
 
-      {/* Donation warning */}
       <View style={styles.warningCard}>
         <MaterialCommunityIcons name="fire" size={18} color="#FF9F0A" />
         <Text style={styles.warningText}>
-          Snooze or miss = ${alarm?.donationAmount ?? 0} donation
+          Snooze = ${amount} donation · Miss = ${amount * 2}
         </Text>
       </View>
 
-      {/* Confirmation method */}
-      {!ready && <ActivityIndicator size="large" color="#FF5A3C" />}
-      {confirmMethod === "button" && (
-        <TouchableOpacity style={styles.bigDismissBtn} onPress={handleDismiss}>
-          <Feather name="sun" size={32} color="#0A0A0F" />
-          <Text style={styles.bigDismissBtnText}>I'm Awake!</Text>
-        </TouchableOpacity>
-      )}
-      {confirmMethod === "math" && (
-        <View style={styles.challengeContainer}>
-          <Text style={styles.challengeTitle}>Solve to dismiss</Text>
-          <MathChallenge onSolve={handleDismiss} />
-        </View>
-      )}
-      {confirmMethod === "shake" && (
-        <View style={styles.challengeContainer}>
-          <Text style={styles.challengeTitle}>Shake to dismiss</Text>
-          <MaterialCommunityIcons name="cellphone-sound" size={64} color="#FF5A3C" />
-          <View style={styles.shakeProgress}>
-            {[...Array(10)].map((_, i) => (
-              <View key={i} style={[styles.shakeDot, i < shakeCount && styles.shakeDotActive]} />
-            ))}
-          </View>
-          <Text style={styles.shakeHint}>Keep shaking your phone</Text>
-        </View>
-      )}
-      {confirmMethod === "qr" && (
-        <View style={styles.challengeContainer}>
-          <Text style={styles.challengeTitle}>Get out of bed to scan QR</Text>
-          <MaterialCommunityIcons name="qrcode-scan" size={64} color="#FF5A3C" />
-          <Text style={styles.qrHint}>Place a QR code sticker away from your bed</Text>
-          <TouchableOpacity style={styles.qrFallback} onPress={handleDismiss}>
-            <Text style={styles.qrFallbackText}>Tap if QR is not set up</Text>
+      {!ready ? (
+        <ActivityIndicator size="large" color="#FF5A3C" />
+      ) : (
+        <View style={styles.actions}>
+          {canSnooze && (
+            <TouchableOpacity
+              style={[styles.bigBtn, styles.snoozeBtn]}
+              onPress={() => handlers.current.handleSnooze(false)}
+              disabled={busy}
+              activeOpacity={0.85}
+            >
+              <MaterialCommunityIcons name="alarm-snooze" size={30} color="#FF9F0A" />
+              <Text style={[styles.bigBtnText, { color: "#FF9F0A" }]}>SNOOZE</Text>
+              <Text style={styles.bigBtnSub}>{alarm?.snoozeDurationMinutes ?? 5} min · ${amount}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[styles.bigBtn, styles.wakeBtn]}
+            onPress={startChallenge}
+            disabled={busy}
+            activeOpacity={0.85}
+          >
+            {busy ? <ActivityIndicator color="#0A0A0F" /> : <Feather name="sun" size={30} color="#0A0A0F" />}
+            <Text style={[styles.bigBtnText, { color: "#0A0A0F" }]}>WAKE UP</Text>
+            <Text style={[styles.bigBtnSub, { color: "#0A0A0FAA" }]}>
+              {confirmMethod === "button" ? "I'm up" : `${CHALLENGE_SECONDS}s to prove it`}
+            </Text>
           </TouchableOpacity>
         </View>
-      )}
-
-      {/* Snooze */}
-      {alarm?.snoozeEnabled && (
-        <TouchableOpacity style={styles.snoozeBtn} onPress={handleSnooze} disabled={busy}>
-          <MaterialCommunityIcons name="alarm-snooze" size={18} color="#FF9F0A" />
-          <Text style={styles.snoozeBtnText}>
-            Snooze {alarm.snoozeDurationMinutes}m (donate ${alarm.donationAmount})
-          </Text>
-        </TouchableOpacity>
       )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#0A0A0F", alignItems: "center", justifyContent: "space-around", padding: 24 },
-  clockContainer: { alignItems: "center" },
+  container: { flex: 1, backgroundColor: "#0A0A0F", alignItems: "center", justifyContent: "space-between", padding: 24 },
+  clockContainer: { alignItems: "center", marginTop: 24 },
   clock: { fontSize: 72, fontFamily: "Inter_700Bold", color: "#F0F0FF", letterSpacing: -2 },
   alarmLabel: { fontSize: 18, fontFamily: "Inter_500Medium", color: "#8888AA" },
   warningCard: {
@@ -283,24 +356,29 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#FF9F0A44",
   },
   warningText: { fontSize: 13, color: "#FF9F0A", fontFamily: "Inter_500Medium" },
-  bigDismissBtn: {
-    width: 180, height: 180, borderRadius: 90,
-    backgroundColor: "#FF5A3C", alignItems: "center", justifyContent: "center", gap: 8,
+  actions: { width: "100%", gap: 14 },
+  bigBtn: {
+    width: "100%", borderRadius: 28, paddingVertical: 26, alignItems: "center", justifyContent: "center", gap: 4,
   },
-  bigDismissBtnText: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#0A0A0F" },
-  challengeContainer: { alignItems: "center", gap: 16 },
-  challengeTitle: { fontSize: 16, fontFamily: "Inter_600SemiBold", color: "#8888AA" },
+  snoozeBtn: { backgroundColor: "#FF9F0A1F", borderWidth: 2, borderColor: "#FF9F0A" },
+  wakeBtn: { backgroundColor: "#30D158" },
+  bigBtnText: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: 1 },
+  bigBtnSub: { fontSize: 13, fontFamily: "Inter_500Medium", color: "#FF9F0AAA" },
+  challengeHeader: { alignItems: "center", gap: 10, width: "100%" },
+  challengeTitle: { fontSize: 24, fontFamily: "Inter_700Bold", color: "#F0F0FF" },
+  countdownPill: {
+    flexDirection: "row", alignItems: "center", gap: 6, borderRadius: 999,
+    paddingHorizontal: 16, paddingVertical: 8, backgroundColor: "#FF9F0A22", borderWidth: 1, borderColor: "#FF9F0A66",
+  },
+  countdownPillUrgent: { backgroundColor: "#FF453A22", borderColor: "#FF453A" },
+  countdownText: { fontSize: 22, fontFamily: "Inter_700Bold", color: "#FF9F0A", fontVariant: ["tabular-nums"] },
+  challengeHint: { fontSize: 13, fontFamily: "Inter_400Regular", color: "#8888AA", textAlign: "center" },
+  challengeBody: { alignItems: "center", gap: 16 },
+  challengeBodyTitle: { fontSize: 18, fontFamily: "Inter_600SemiBold", color: "#F0F0FF", textAlign: "center" },
   shakeProgress: { flexDirection: "row", gap: 6 },
-  shakeDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#2A2A40" },
+  shakeDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#2A2A40" },
   shakeDotActive: { backgroundColor: "#FF5A3C" },
-  shakeHint: { fontSize: 14, color: "#8888AA", fontFamily: "Inter_400Regular" },
-  qrHint: { fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular", textAlign: "center" },
-  qrFallback: { marginTop: 8 },
   qrFallbackText: { fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular", textDecorationLine: "underline" },
-  snoozeBtn: {
-    flexDirection: "row", alignItems: "center", gap: 8,
-    backgroundColor: "#FF9F0A22", borderRadius: 16, paddingHorizontal: 20, paddingVertical: 14,
-    borderWidth: 1, borderColor: "#FF9F0A44",
-  },
-  snoozeBtnText: { fontSize: 14, fontFamily: "Inter_500Medium", color: "#FF9F0A" },
+  backLink: { paddingVertical: 10, paddingHorizontal: 24 },
+  backLinkText: { fontSize: 15, fontFamily: "Inter_500Medium", color: "#8888AA" },
 });

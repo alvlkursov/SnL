@@ -16,9 +16,10 @@ export default function SnoozeChargeScreen() {
     snoozeLimit = "3",
     ringTime = "7:10 AM",
     test = "false",
+    auto = "false",
   } = useLocalSearchParams<{
     amount?: string; fund?: string;
-    snoozeIndex?: string; snoozeLimit?: string; ringTime?: string; test?: string;
+    snoozeIndex?: string; snoozeLimit?: string; ringTime?: string; test?: string; auto?: string;
   }>();
   const isTest = test === "true";
 
@@ -34,7 +35,7 @@ export default function SnoozeChargeScreen() {
       </View>
 
       {/* Title */}
-      <Text style={styles.title}>Snoozed</Text>
+      <Text style={styles.title}>{auto === "true" ? "Time's up — snoozed" : "Snoozed"}</Text>
       <Text style={styles.subtitle}>
         {isTest ? "Test alarm — nothing was charged" : `Alarm will ring again at ${ringTime}`}
       </Text>
