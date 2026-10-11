@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.provider.Settings
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
@@ -44,6 +45,8 @@ class AlarmClockModule : Module() {
         "notifications" to notifications,
         "exactAlarms" to AlarmScheduler.canScheduleExact(context),
         "fullScreen" to RingNotification.canUseFullScreen(context),
+        "batteryUnrestricted" to (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
+          .isIgnoringBatteryOptimizations(context.packageName),
         "isXiaomi" to isXiaomi(),
       )
     }
@@ -87,9 +90,17 @@ class AlarmClockModule : Module() {
   }
 
   private fun openFirst(intents: List<Intent>): Boolean {
+    // Start from the visible activity: MIUI silently blocks activity starts from the app context
+    // ("background pop-ups"), which is exactly the permission these screens are meant to grant
+    val activity = appContext.currentActivity
     for (intent in intents) {
       try {
-        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (activity != null) {
+          if (intent.resolveActivity(context.packageManager) == null && intent.component == null) continue
+          activity.startActivity(intent)
+        } else {
+          context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
         return true
       } catch (_: Exception) {
         // Screen not available on this device/ROM; try the next one

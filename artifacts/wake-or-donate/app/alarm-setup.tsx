@@ -40,7 +40,8 @@ function steps(status: AlarmClockStatus): Step[] {
     {
       title: "No battery restrictions",
       description: "Find WakeOrDonate and choose \"No restrictions\" / \"Don't optimize\", so the system doesn't block alarms.",
-      ok: null,
+      // Older builds of the native module don't report this
+      ok: status.batteryUnrestricted ?? null,
       settings: "battery",
     },
   ];

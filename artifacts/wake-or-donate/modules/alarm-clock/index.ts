@@ -12,6 +12,7 @@ export interface AlarmClockStatus {
   notifications: boolean;
   exactAlarms: boolean;
   fullScreen: boolean;
+  batteryUnrestricted: boolean;
   isXiaomi: boolean;
 }
 
