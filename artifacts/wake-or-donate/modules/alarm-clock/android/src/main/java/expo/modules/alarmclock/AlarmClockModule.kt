@@ -26,9 +26,15 @@ class AlarmClockModule : Module() {
       AlarmScheduler.apply(context, entries)
     }
 
+    // The user dealt with this ring on the ring screen: silence it and stop showing over the lock screen
     Function("stopRinging") { alarmId: Int ->
       RingNotification.cancel(context, alarmId)
       AlarmLockScreen.release()
+    }
+
+    // Silence a ring without touching the lock screen (e.g. its alarm was switched off)
+    Function("cancelRing") { alarmId: Int ->
+      RingNotification.cancel(context, alarmId)
     }
 
     Function("getStatus") {

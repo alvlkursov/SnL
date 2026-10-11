@@ -10,6 +10,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAlarms } from "@/context/AlarmContext";
 import { stopRinging, scheduleSnooze, nativeAlarmsAvailable } from "@/lib/alarmNotifications";
+import { AlarmClock } from "@/modules/alarm-clock";
 import { ringingAlarm } from "@/lib/ringingState";
 
 function MathChallenge({ onSolve }: { onSolve: () => void }) {
@@ -139,6 +140,7 @@ export default function ActiveAlarmScreen() {
     } catch (e: any) {
       // Don't torture the user over a network error, but make clear it isn't confirmed yet
       silence();
+      if (alarmId) AlarmClock?.cancelRing(alarmId);
       Alert.alert(
         "Not confirmed yet",
         `${e?.message ?? "Couldn't reach the server."}\n\nConnect to the internet and tap again — otherwise this alarm counts as missed.`,

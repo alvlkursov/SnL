@@ -21,6 +21,7 @@ export type AlarmClockSettings =
 interface AlarmClockNativeModule {
   setSchedule(entriesJson: string): void;
   stopRinging(alarmId: number): void;
+  cancelRing(alarmId: number): void;
   getStatus(): AlarmClockStatus;
   openSettings(target: AlarmClockSettings): boolean;
 }

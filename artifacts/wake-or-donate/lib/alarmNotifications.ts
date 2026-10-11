@@ -180,14 +180,39 @@ function enqueue(task: () => Promise<void>): Promise<void> {
   return queue;
 }
 
+/**
+ * Builds before the native alarm clock scheduled notification bursts a week ahead.
+ * Those keep firing after an update unless removed, so the native path clears them.
+ */
+async function clearNotificationAlarms() {
+  await Notifications.cancelAllScheduledNotificationsAsync();
+  for (const n of await Notifications.getPresentedNotificationsAsync()) {
+    if (isAlarmData(n.request.content.data)) await Notifications.dismissNotificationAsync(n.request.identifier);
+  }
+}
+
 async function applySchedule() {
   const entries = await wantedEntries(lastAlarms);
-  if (useNativeAlarms) AlarmClock!.setSchedule(JSON.stringify(entries));
-  else await syncNotificationBursts(entries);
+  if (!useNativeAlarms) {
+    await syncNotificationBursts(entries);
+    return;
+  }
+  AlarmClock!.setSchedule(JSON.stringify(entries));
+  // An alarm switched off or deleted while ringing must go quiet right away
+  for (const alarm of lastAlarms) {
+    if (!alarm.isEnabled) AlarmClock!.cancelRing(alarm.id);
+  }
+  await clearNotificationAlarms();
 }
 
 /** Makes the phone's alarm schedule match the alarm list. */
 export function syncAlarmNotifications(alarms: Alarm[]): Promise<void> {
+  // Deleted alarms may still be ringing: silence them too
+  if (useNativeAlarms) {
+    for (const old of lastAlarms) {
+      if (!alarms.some(a => a.id === old.id)) AlarmClock!.cancelRing(old.id);
+    }
+  }
   lastAlarms = alarms;
   return enqueue(applySchedule);
 }
@@ -233,6 +258,7 @@ export function cancelAllAlarmNotifications(): Promise<void> {
     await AsyncStorage.removeItem(SNOOZE_KEY);
     if (useNativeAlarms) {
       AlarmClock!.setSchedule("[]");
+      await clearNotificationAlarms();
       return;
     }
     await Notifications.cancelAllScheduledNotificationsAsync();
