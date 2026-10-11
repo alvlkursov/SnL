@@ -71,8 +71,9 @@ function formatTime(date: Date) {
 }
 
 export default function ActiveAlarmScreen() {
-  const { id, test } = useLocalSearchParams<{ id: string; test?: string }>();
+  const { id, test, at } = useLocalSearchParams<{ id: string; test?: string; at?: string }>();
   const alarmId = parseInt(id ?? "0", 10);
+  const ringAt = at ? Number(at) : undefined; // scheduled ring time, passed by the native alarm
   const { alarms, dismissAlarm, snoozeAlarm } = useAlarms();
   const alarm = alarms.find(a => a.id === alarmId);
   const insets = useSafeAreaInsets();
@@ -137,7 +138,7 @@ export default function ActiveAlarmScreen() {
     if (busy) return;
     setBusy(true);
     try {
-      const result = alarmId ? await dismissAlarm(alarmId) : null;
+      const result = alarmId ? await dismissAlarm(alarmId, ringAt) : null;
       silence();
       if (alarmId) await stopRinging(alarmId, { clearSnooze: true });
       router.replace({
@@ -162,12 +163,12 @@ export default function ActiveAlarmScreen() {
     if (!alarmId || busy) return;
     setBusy(true);
     try {
-      const result = await snoozeAlarm(alarmId);
+      const result = await snoozeAlarm(alarmId, ringAt);
       silence();
-      const ringAt = new Date(result.ringAt);
+      const nextRingAt = new Date(result.ringAt);
       await stopRinging(alarmId);
       if (!result.test) {
-        await scheduleSnooze({ ...alarmInfo, donationAmount: result.donationAmount }, ringAt);
+        await scheduleSnooze({ ...alarmInfo, donationAmount: result.donationAmount }, nextRingAt);
       }
       router.replace({
         pathname: "/alarm/snooze-charge",
@@ -176,7 +177,7 @@ export default function ActiveAlarmScreen() {
           fund: result.charityName,
           snoozeIndex: String(result.snoozeIndex),
           snoozeLimit: String(result.snoozeLimit),
-          ringTime: formatTime(ringAt),
+          ringTime: formatTime(nextRingAt),
           test: result.test ? "true" : "false",
           auto: auto ? "true" : "false",
         },
@@ -214,17 +215,16 @@ export default function ActiveAlarmScreen() {
   // 30-second countdown: failing to prove you're awake snoozes (and donates)
   useEffect(() => {
     if (phase !== "challenge") return;
+    const deadline = Date.now() + CHALLENGE_SECONDS * 1000;
     const timer = setInterval(() => {
-      setSecondsLeft(s => {
-        if (s <= 1) {
-          clearInterval(timer);
-          if (canSnooze) handlers.current.handleSnooze(true);
-          else backToRinging();
-          return 0;
-        }
-        return s - 1;
-      });
-    }, 1000);
+      const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+      setSecondsLeft(left);
+      if (left === 0) {
+        clearInterval(timer);
+        if (canSnooze) handlers.current.handleSnooze(true);
+        else backToRinging();
+      }
+    }, 250);
     return () => clearInterval(timer);
   }, [phase, challengeKey, canSnooze]);
 

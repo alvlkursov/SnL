@@ -110,6 +110,7 @@ export default function ProfileScreen() {
   const openLegal = (label: string) => {
     if (label === "Privacy Policy") Linking.openURL(publicPageUrl("/privacy"));
     else if (label === "Contact Support") Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=WakeOrDonate%20support`);
+    else if (label === "Diagnostics") router.push("/diagnostics");
     else if (label === "About") {
       const engine = Platform.OS !== "android" ? "notifications" : AlarmClock ? "native alarm clock" : "MISSING — notifications fallback";
       Alert.alert(
@@ -274,6 +275,7 @@ export default function ProfileScreen() {
         {[
           { label: "Privacy Policy", icon: "shield" },
           { label: "About", icon: "info" },
+          { label: "Diagnostics", icon: "activity" },
           { label: "Contact Support", icon: "message-circle" },
         ].map((item, i, arr) => (
           <React.Fragment key={item.label}>

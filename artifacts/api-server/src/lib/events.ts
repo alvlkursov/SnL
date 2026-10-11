@@ -13,7 +13,7 @@ const CATCH_UP_MS = minutes(12 * 60);
 
 /** An alarm created or edited at/after its ring time did not actually ring on the phone. */
 function editedAfterRing(alarm: Alarm, scheduledAt: Date): boolean {
-  return alarm.updatedAt.getTime() > scheduledAt.getTime() - minutes(1);
+  return alarm.updatedAt.getTime() > scheduledAt.getTime();
 }
 
 /** Today's occurrence of `alarm` in `tz`, if the alarm is set for today's weekday. */
@@ -42,20 +42,33 @@ async function openEvent(alarm: Alarm, occurrence: { localDate: string; schedule
  * The occurrence the user is reacting to right now (dismiss/snooze), or null for a test alarm.
  * Opens the occurrence if the phone rang slightly before the scheduler got to it.
  */
-export async function findCurrentEvent(alarm: Alarm, tz: string, now = new Date()): Promise<AlarmEvent | null> {
+export async function findCurrentEvent(
+  alarm: Alarm,
+  tz: string,
+  now = new Date(),
+  reportedRingAt?: Date, // ring time the phone scheduled; immune to a wrong server-side timezone
+): Promise<AlarmEvent | null> {
   const [ringing] = await db.select().from(alarmEventsTable)
     .where(and(eq(alarmEventsTable.alarmId, alarm.id), eq(alarmEventsTable.status, "ringing")))
     .orderBy(desc(alarmEventsTable.scheduledAt)).limit(1);
   if (ringing) return ringing;
 
   if (!alarm.isEnabled) return null;
-  const occurrence = todaysOccurrence(alarm, tz, now);
+  const occurrence = reportedOccurrence(reportedRingAt, tz, now) ?? todaysOccurrence(alarm, tz, now);
   if (!occurrence || editedAfterRing(alarm, occurrence.scheduledAt)) return null;
   const start = occurrence.scheduledAt.getTime() - EARLY_TOLERANCE_MS;
   const end = occurrence.scheduledAt.getTime() + minutes(RING_WINDOW_MINUTES + GRACE_MINUTES);
   if (now.getTime() < start || now.getTime() > end) return null;
   const event = await openEvent(alarm, occurrence);
   return event?.status === "ringing" ? event : null;
+}
+
+/** An occurrence from the ring time the phone reports, if it is plausibly the ring happening now. */
+function reportedOccurrence(ringAt: Date | undefined, tz: string, now: Date) {
+  if (!ringAt || Number.isNaN(ringAt.getTime())) return null;
+  const age = now.getTime() - ringAt.getTime();
+  if (age < -EARLY_TOLERANCE_MS || age > minutes(RING_WINDOW_MINUTES + GRACE_MINUTES)) return null;
+  return { localDate: localParts(ringAt, tz).localDate, scheduledAt: ringAt };
 }
 
 /** Opens occurrences for alarms whose time has just come. */

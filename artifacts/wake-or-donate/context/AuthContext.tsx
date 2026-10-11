@@ -10,10 +10,21 @@ const BASE_URL = process.env.EXPO_PUBLIC_API_URL
     ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
     : "/api";
 
-const deviceTimezone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+/** IANA timezone of the phone; falls back to a fixed-offset zone if Intl can't tell. */
+export function deviceTimezone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) return tz;
+  } catch {}
+  const offsetMin = -new Date().getTimezoneOffset();
+  if (offsetMin % 60 !== 0) return "UTC";
+  const hours = offsetMin / 60;
+  // Etc/GMT zones have inverted signs: UTC+3 is "Etc/GMT-3"
+  return hours === 0 ? "UTC" : `Etc/GMT${hours > 0 ? "-" : "+"}${Math.abs(hours)}`;
+}
 
 // Alarms are evaluated server-side in the user's local time, so keep it current
-async function reportTimezone(token: string) {
+export async function reportTimezone(token: string) {
   try {
     await fetch(`${BASE_URL}/auth/me`, {
       method: "PATCH",

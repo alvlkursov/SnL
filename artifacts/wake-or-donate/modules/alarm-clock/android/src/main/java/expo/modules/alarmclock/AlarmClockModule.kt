@@ -38,6 +38,13 @@ class AlarmClockModule : Module() {
       RingNotification.cancel(context, alarmId)
     }
 
+    // Upcoming scheduled rings as JSON: [{ key, alarmId, at, title, body }]
+    Function("getSchedule") {
+      val array = JSONArray()
+      AlarmScheduler.upcoming(context).forEach { array.put(it.toJson()) }
+      array.toString()
+    }
+
     Function("getStatus") {
       val notifications = (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
         .areNotificationsEnabled()

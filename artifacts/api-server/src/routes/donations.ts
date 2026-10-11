@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { alarmEventsTable, charitiesTable, donationsTable } from "@workspace/db/schema";
+import { alarmEventsTable, charitiesTable, donationsTable, usersTable } from "@workspace/db/schema";
 import { desc, eq, sql } from "drizzle-orm";
 import { currentStreak } from "../lib/events.js";
 import { authMiddleware, getUserId } from "../lib/auth.js";
@@ -58,6 +58,19 @@ router.get("/stats", async (req, res) => {
     successRate: resolved ? Math.round((events.dismissed / resolved) * 100) : 0,
     streak: await currentStreak(userId),
   });
+});
+
+// Wipes the user's ring history and donation records (useful after testing).
+// TODO(payments): once real charges exist, keep paid donations and only hide them from stats.
+router.post("/reset", async (req, res) => {
+  const userId = getUserId(req);
+  await db.transaction(async (tx) => {
+    await tx.delete(alarmEventsTable).where(eq(alarmEventsTable.userId, userId));
+    await tx.delete(donationsTable).where(eq(donationsTable.userId, userId));
+    await tx.update(usersTable).set({ totalDonated: 0, alarmsTriggered: 0, alarmsDismissed: 0 })
+      .where(eq(usersTable.id, userId));
+  });
+  res.json({ success: true });
 });
 
 export default router;

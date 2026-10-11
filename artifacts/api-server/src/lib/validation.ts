@@ -27,6 +27,11 @@ export const updateMeSchema = z.object({
   timezone: timezone.optional(),
 });
 
+// Body of dismiss / snooze: the ring time the phone scheduled (epoch ms), when known
+export const ringActionSchema = z.object({
+  ringAt: z.number().int().positive().optional(),
+});
+
 export const setFavoritesSchema = z.object({
   charityIds: z.array(z.number().int().positive()).max(20),
 });

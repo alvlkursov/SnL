@@ -44,7 +44,9 @@ object AlarmScheduler {
   const val ACTION_FIRE = "expo.modules.alarmclock.FIRE"
   const val DEEP_LINK_SCHEME = "wake-or-donate"
 
-  fun ringUri(alarmId: Int): Uri = Uri.parse("$DEEP_LINK_SCHEME://alarm/active?id=$alarmId")
+  /** [at] is the scheduled ring time, so the server can match the exact occurrence. */
+  fun ringUri(alarmId: Int, at: Long = 0): Uri =
+    Uri.parse("$DEEP_LINK_SCHEME://alarm/active?id=$alarmId" + if (at > 0) "&at=$at" else "")
 
   /** Replaces the whole schedule with [entries]. */
   fun apply(context: Context, entries: List<AlarmEntry>) {
@@ -69,7 +71,7 @@ object AlarmScheduler {
       val fire = firePendingIntent(context, entry)
       try {
         val show = PendingIntent.getActivity(
-          context, entry.key.hashCode(), launchIntent(context, entry.alarmId),
+          context, entry.key.hashCode(), launchIntent(context, entry.alarmId, entry.at),
           PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         alarmManager.setAlarmClock(AlarmManager.AlarmClockInfo(entry.at, show), fire)
@@ -88,12 +90,12 @@ object AlarmScheduler {
   }
 
   /** Opens the app at the ring screen for [alarmId]. */
-  fun launchIntent(context: Context, alarmId: Int): Intent {
+  fun launchIntent(context: Context, alarmId: Int, at: Long = 0): Intent {
     val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
       ?: Intent(Intent.ACTION_MAIN).setPackage(context.packageName)
     return intent
       .setAction(Intent.ACTION_VIEW)
-      .setData(ringUri(alarmId))
+      .setData(ringUri(alarmId, at))
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
   }
 
@@ -103,12 +105,19 @@ object AlarmScheduler {
       // Unique data so each occurrence gets its own PendingIntent
       .setData(Uri.parse("$DEEP_LINK_SCHEME://fire/${Uri.encode(entry.key)}"))
       .putExtra("alarmId", entry.alarmId)
+      .putExtra("at", entry.at)
       .putExtra("title", entry.title)
       .putExtra("body", entry.body)
     return PendingIntent.getBroadcast(
       context, entry.key.hashCode(), intent,
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
+  }
+
+  /** Upcoming scheduled rings, for the diagnostics screen. */
+  fun upcoming(context: Context): List<AlarmEntry> {
+    val now = System.currentTimeMillis()
+    return load(context).filter { it.at > now }.sortedBy { it.at }
   }
 
   private fun load(context: Context): List<AlarmEntry> {

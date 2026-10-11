@@ -171,7 +171,24 @@ async function syncNotificationBursts(entries: AlarmClockEntry[]) {
 
 // --- shared API ---
 
+// The last alarm list from the server, cached so a cold start from the lock screen
+// (before the list loads) doesn't rebuild the schedule from an empty list
+const ALARMS_CACHE_KEY = "alarm_list_cache";
 let lastAlarms: Alarm[] = [];
+let alarmsKnown = false;
+
+async function ensureAlarmsKnown(): Promise<boolean> {
+  if (alarmsKnown) return true;
+  try {
+    const raw = await AsyncStorage.getItem(ALARMS_CACHE_KEY);
+    if (raw) {
+      lastAlarms = JSON.parse(raw);
+      alarmsKnown = true;
+    }
+  } catch {}
+  return alarmsKnown;
+}
+
 let queue: Promise<void> = Promise.resolve();
 // Serialize all schedule changes so overlapping syncs can't interleave
 function enqueue(task: () => Promise<void>): Promise<void> {
@@ -192,6 +209,8 @@ async function clearNotificationAlarms() {
 }
 
 async function applySchedule() {
+  // Never rebuild the schedule from a list we don't actually have
+  if (!(await ensureAlarmsKnown())) return;
   const entries = await wantedEntries(lastAlarms);
   if (!useNativeAlarms) {
     await syncNotificationBursts(entries);
@@ -214,6 +233,8 @@ export function syncAlarmNotifications(alarms: Alarm[]): Promise<void> {
     }
   }
   lastAlarms = alarms;
+  alarmsKnown = true;
+  AsyncStorage.setItem(ALARMS_CACHE_KEY, JSON.stringify(alarms)).catch(() => {});
   return enqueue(applySchedule);
 }
 
@@ -254,8 +275,9 @@ export function scheduleSnooze(alarm: AlarmInfo, ringAt: Date): Promise<void> {
 
 export function cancelAllAlarmNotifications(): Promise<void> {
   lastAlarms = [];
+  alarmsKnown = false;
   return enqueue(async () => {
-    await AsyncStorage.removeItem(SNOOZE_KEY);
+    await AsyncStorage.multiRemove([SNOOZE_KEY, ALARMS_CACHE_KEY]);
     if (useNativeAlarms) {
       AlarmClock!.setSchedule("[]");
       await clearNotificationAlarms();
@@ -264,4 +286,20 @@ export function cancelAllAlarmNotifications(): Promise<void> {
     await Notifications.cancelAllScheduledNotificationsAsync();
     await Notifications.dismissAllNotificationsAsync();
   });
+}
+
+export interface ScheduledRing {
+  alarmId: number;
+  at: number;
+  title: string;
+}
+
+/** What the phone will actually ring next (diagnostics). */
+export function scheduledRings(): ScheduledRing[] {
+  if (!useNativeAlarms) return [];
+  try {
+    return JSON.parse(AlarmClock!.getSchedule());
+  } catch {
+    return [];
+  }
 }

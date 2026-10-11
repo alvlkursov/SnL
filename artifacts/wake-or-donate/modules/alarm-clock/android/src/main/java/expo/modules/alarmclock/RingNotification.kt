@@ -23,12 +23,12 @@ object RingNotification {
   private const val RING_TIMEOUT_MS = 10 * 60 * 1000L
   private val VIBRATION = longArrayOf(0, 800, 400, 800, 400, 800)
 
-  fun show(context: Context, alarmId: Int, title: String, body: String) {
+  fun show(context: Context, alarmId: Int, at: Long, title: String, body: String) {
     val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
     ensureChannel(context, manager)
 
     val open = PendingIntent.getActivity(
-      context, alarmId, AlarmScheduler.launchIntent(context, alarmId),
+      context, alarmId, AlarmScheduler.launchIntent(context, alarmId, at),
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
     val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

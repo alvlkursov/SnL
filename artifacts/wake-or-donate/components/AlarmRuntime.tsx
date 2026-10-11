@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
-import { useAuth } from "@/context/AuthContext";
+import { useAuth, reportTimezone } from "@/context/AuthContext";
 import { useAlarms } from "@/context/AlarmContext";
 import { isAlarmData, setupAlarmNotifications, ALARM_SETUP_SEEN_KEY } from "@/lib/alarmNotifications";
 import { ringingAlarm } from "@/lib/ringingState";
@@ -69,6 +69,7 @@ export function AlarmRuntime() {
   useEffect(() => {
     if (!user) return;
     const check = async () => {
+      if (token) reportTimezone(token); // travel or DST: alarms are judged in local time
       fetchAlarms();
       const missed = await fetchMissedEvents();
       const first = missed[0];

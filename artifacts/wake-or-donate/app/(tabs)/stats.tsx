@@ -1,11 +1,12 @@
 import React, { useCallback, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, Platform, ActivityIndicator, RefreshControl,
+  View, Text, StyleSheet, ScrollView, Platform, ActivityIndicator, RefreshControl, TouchableOpacity,
 } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
+import { confirmAction } from "@/lib/confirm";
 
 interface Stats {
   totalDonated: number;
@@ -59,6 +60,17 @@ export default function StatsScreen() {
     }
   };
 
+  const resetStats = async () => {
+    const ok = await confirmAction(
+      "Reset statistics",
+      "This deletes your alarm history and donation records. It can't be undone.",
+      "Reset",
+    );
+    if (!ok || !token) return;
+    await fetch(`${BASE_URL}/donations/reset`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    fetchData();
+  };
+
   // Refresh every time the tab is opened: alarms are dismissed/missed on other screens
   useFocusEffect(useCallback(() => { fetchData(); }, [token]));
 
@@ -87,7 +99,12 @@ export default function StatsScreen() {
         <RefreshControl refreshing={refreshing} tintColor="#FF5A3C" onRefresh={() => { setRefreshing(true); fetchData(); }} />
       }
     >
-      <Text style={styles.headerTitle}>Statistics</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Statistics</Text>
+        <TouchableOpacity onPress={resetStats} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={styles.resetText}>Reset</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Success rate ring */}
       <View style={styles.ringCard}>
@@ -164,10 +181,12 @@ export default function StatsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0A0A0F" },
   centered: { alignItems: "center", justifyContent: "center" },
-  headerTitle: {
-    fontSize: 28, fontWeight: "700", color: "#F0F0FF", fontFamily: "Inter_700Bold",
+  headerRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20, marginBottom: 20,
   },
+  headerTitle: { fontSize: 28, fontWeight: "700", color: "#F0F0FF", fontFamily: "Inter_700Bold" },
+  resetText: { fontSize: 14, fontFamily: "Inter_500Medium", color: "#8888AA" },
   note: {
     fontSize: 12, color: "#8888AA", fontFamily: "Inter_400Regular",
     marginHorizontal: 20, marginTop: -8, marginBottom: 16, lineHeight: 17,

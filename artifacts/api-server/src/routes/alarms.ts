@@ -3,8 +3,9 @@ import { db } from "@workspace/db";
 import { alarmsTable, alarmEventsTable, donationsTable, usersTable, type Alarm } from "@workspace/db/schema";
 import { eq, and, desc, lt, sql } from "drizzle-orm";
 import { authMiddleware, getUserId } from "../lib/auth.js";
-import { parseBody, parseId, createAlarmSchema, updateAlarmSchema } from "../lib/validation.js";
+import { parseBody, parseId, createAlarmSchema, updateAlarmSchema, ringActionSchema } from "../lib/validation.js";
 import { findCurrentEvent, currentStreak, catchUpAlarms } from "../lib/events.js";
+import { localParts } from "../lib/time.js";
 import { resolveCharity, recordDonation } from "../lib/donations.js";
 import { MAX_SNOOZES, RING_WINDOW_MINUTES, minutes } from "../lib/rules.js";
 
@@ -70,6 +71,24 @@ async function userTimezone(userId: number): Promise<string> {
   return user?.timezone ?? "UTC";
 }
 
+// What the server sees for this user: timezone, its idea of local time, recent rings
+router.get("/diagnostics", async (req, res) => {
+  const userId = getUserId(req);
+  const tz = await userTimezone(userId);
+  const now = new Date();
+  const recent = await db.select({
+    alarmId: alarmEventsTable.alarmId,
+    label: alarmsTable.label,
+    scheduledAt: alarmEventsTable.scheduledAt,
+    status: alarmEventsTable.status,
+    snoozesUsed: alarmEventsTable.snoozesUsed,
+  }).from(alarmEventsTable)
+    .innerJoin(alarmsTable, eq(alarmEventsTable.alarmId, alarmsTable.id))
+    .where(eq(alarmEventsTable.userId, userId))
+    .orderBy(desc(alarmEventsTable.scheduledAt)).limit(10);
+  res.json({ timezone: tz, serverNow: now, serverLocalTime: localParts(now, tz), recentRings: recent });
+});
+
 // Unacknowledged misses, so the app can show the "Alarm missed" screen on next open
 router.get("/events/missed", async (req, res) => {
   await catchUpAlarms();
@@ -110,7 +129,10 @@ router.post("/:id/dismiss", async (req, res) => {
   const alarm = await findOwnAlarm(id, userId);
   if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }
 
-  const event = await findCurrentEvent(alarm, await userTimezone(userId));
+  const body = parseBody(ringActionSchema, req, res);
+  if (!body) return;
+  const reportedRingAt = body.ringAt ? new Date(body.ringAt) : undefined;
+  const event = await findCurrentEvent(alarm, await userTimezone(userId), new Date(), reportedRingAt);
   if (!event) {
     res.json({ success: true, donated: false, test: true, streak: await currentStreak(userId), message: "Test alarm dismissed" });
     return;
@@ -147,7 +169,10 @@ router.post("/:id/snooze", async (req, res) => {
   const now = new Date();
   const ringAt = new Date(now.getTime() + minutes(alarm.snoozeDurationMinutes));
 
-  const event = await findCurrentEvent(alarm, await userTimezone(userId), now);
+  const body = parseBody(ringActionSchema, req, res);
+  if (!body) return;
+  const reportedRingAt = body.ringAt ? new Date(body.ringAt) : undefined;
+  const event = await findCurrentEvent(alarm, await userTimezone(userId), now, reportedRingAt);
   if (!event) {
     // Test alarm: show the flow without charging
     res.json({

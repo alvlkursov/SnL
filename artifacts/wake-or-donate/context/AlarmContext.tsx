@@ -66,8 +66,8 @@ interface AlarmContextType {
   createAlarm: (data: CreateAlarmData) => Promise<void>;
   updateAlarm: (id: number, data: Partial<CreateAlarmData>) => Promise<void>;
   deleteAlarm: (id: number) => Promise<void>;
-  dismissAlarm: (id: number) => Promise<DismissResult>;
-  snoozeAlarm: (id: number) => Promise<SnoozeResult>;
+  dismissAlarm: (id: number, ringAt?: number) => Promise<DismissResult>;
+  snoozeAlarm: (id: number, ringAt?: number) => Promise<SnoozeResult>;
   fetchMissedEvents: () => Promise<MissedEvent[]>;
   acknowledgeMissed: (eventId: number) => Promise<void>;
   donateVoluntarily: (amount: number) => Promise<Donation>;
@@ -152,9 +152,12 @@ export function AlarmProvider({ children }: { children: ReactNode }) {
     return json as T;
   };
 
-  const dismissAlarm = (id: number) => postJson<DismissResult>(`/alarms/${id}/dismiss`);
+  // ringAt: the ring time the phone scheduled, so the server matches the exact occurrence
+  const dismissAlarm = (id: number, ringAt?: number) =>
+    postJson<DismissResult>(`/alarms/${id}/dismiss`, ringAt ? { ringAt } : {});
 
-  const snoozeAlarm = (id: number) => postJson<SnoozeResult>(`/alarms/${id}/snooze`);
+  const snoozeAlarm = (id: number, ringAt?: number) =>
+    postJson<SnoozeResult>(`/alarms/${id}/snooze`, ringAt ? { ringAt } : {});
 
   const fetchMissedEvents = useCallback(async (): Promise<MissedEvent[]> => {
     if (!token) return [];

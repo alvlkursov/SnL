@@ -12,9 +12,11 @@ class AlarmReceiver : BroadcastReceiver() {
     if (intent.action != AlarmScheduler.ACTION_FIRE) return
     val alarmId = intent.getIntExtra("alarmId", 0)
     if (alarmId == 0) return
+    val at = intent.getLongExtra("at", 0L)
     RingNotification.show(
       context,
       alarmId,
+      at,
       intent.getStringExtra("title") ?: "Alarm",
       intent.getStringExtra("body") ?: "",
     )
@@ -22,7 +24,7 @@ class AlarmReceiver : BroadcastReceiver() {
     // jump straight to the ring screen instead (allowed because we are in the foreground)
     if (isAppInForeground()) {
       try {
-        context.startActivity(AlarmScheduler.launchIntent(context, alarmId))
+        context.startActivity(AlarmScheduler.launchIntent(context, alarmId, at))
       } catch (e: Exception) {
         Log.w("AlarmClock", "Could not open ring screen", e)
       }
