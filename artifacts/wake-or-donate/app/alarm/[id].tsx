@@ -91,7 +91,7 @@ export default function AlarmDetailScreen() {
   };
 
   const handleTest = () => {
-    router.push({ pathname: "/alarm/active", params: { id: alarm.id } });
+    router.push({ pathname: "/alarm/active", params: { id: alarm.id, test: "1" } });
   };
 
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);

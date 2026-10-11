@@ -34,6 +34,7 @@ function RootLayoutNav() {
       <Stack.Screen name="alarm/snooze-charge" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm/woke-up" options={{ presentation: "fullScreenModal", headerShown: false }} />
       <Stack.Screen name="alarm/receipt" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="alarm-setup" options={{ presentation: "modal", headerShown: false }} />
     </Stack>
   );
 }

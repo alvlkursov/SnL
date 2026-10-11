@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, Animated, Vibration,
-  Platform, Alert,
+  Platform, Alert, ActivityIndicator,
 } from "react-native";
 import { useAudioPlayer, setAudioModeAsync } from "expo-audio";
 import { Accelerometer } from "expo-sensors";
@@ -9,7 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { useAlarms } from "@/context/AlarmContext";
-import { stopRinging, scheduleSnooze } from "@/lib/alarmNotifications";
+import { stopRinging, scheduleSnooze, nativeAlarmsAvailable } from "@/lib/alarmNotifications";
 import { ringingAlarm } from "@/lib/ringingState";
 
 function MathChallenge({ onSolve }: { onSolve: () => void }) {
@@ -68,10 +68,20 @@ function formatTime(date: Date) {
 }
 
 export default function ActiveAlarmScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, test } = useLocalSearchParams<{ id: string; test?: string }>();
   const alarmId = parseInt(id ?? "0", 10);
   const { alarms, dismissAlarm, snoozeAlarm } = useAlarms();
   const alarm = alarms.find(a => a.id === alarmId);
+  // Opened from the lock screen on a cold start, the alarm list may still be loading:
+  // wait briefly so the right confirmation method (math, shake…) is shown
+  const [waitedForAlarm, setWaitedForAlarm] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setWaitedForAlarm(true), 6000);
+    return () => clearTimeout(t);
+  }, []);
+  const ready = !!alarm || waitedForAlarm;
+  // A real ring is already sounding from the native alarm clock; a test ring is not
+  const playInApp = !nativeAlarmsAvailable || test === "1";
   const insets = useSafeAreaInsets();
   const [time, setTime] = useState(new Date());
   const [shakeCount, setShakeCount] = useState(0);
@@ -82,13 +92,15 @@ export default function ActiveAlarmScreen() {
   // Ring: loud looping sound (even in silent mode) + vibration + pulsing clock
   useEffect(() => {
     ringingAlarm.id = alarmId;
-    setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: "doNotMix" })
-      .catch(() => {})
-      .finally(() => {
-        player.loop = true;
-        player.volume = 1;
-        player.play();
-      });
+    if (playInApp) {
+      setAudioModeAsync({ playsInSilentMode: true, shouldPlayInBackground: true, interruptionMode: "doNotMix" })
+        .catch(() => {})
+        .finally(() => {
+          player.loop = true;
+          player.volume = 1;
+          player.play();
+        });
+    }
     const timer = setInterval(() => setTime(new Date()), 1000);
     Vibration.vibrate([500, 500, 500, 500], true);
     const pulse = Animated.loop(
@@ -111,16 +123,18 @@ export default function ActiveAlarmScreen() {
     try { player.pause(); } catch {}
   };
 
+  const alarmInfo = { id: alarmId, label: alarm?.label ?? "Alarm", donationAmount: alarm?.donationAmount ?? 0 };
+
   const handleDismiss = useCallback(async () => {
     if (busy) return;
     setBusy(true);
     try {
-      const result = alarm ? await dismissAlarm(alarm.id) : null;
+      const result = alarmId ? await dismissAlarm(alarmId) : null;
       silence();
-      if (alarm) await stopRinging(alarm.id);
+      if (alarmId) await stopRinging(alarmId, { clearSnooze: true });
       router.replace({
         pathname: "/alarm/woke-up",
-        params: { alarmName: alarm?.label ?? "Alarm", streak: String(result?.streak ?? 0) },
+        params: { alarmName: alarmInfo.label, streak: String(result?.streak ?? 0) },
       });
     } catch (e: any) {
       // Don't torture the user over a network error, but make clear it isn't confirmed yet
@@ -132,17 +146,19 @@ export default function ActiveAlarmScreen() {
     } finally {
       setBusy(false);
     }
-  }, [alarm, busy]);
+  }, [alarmId, alarm, busy]);
 
   const handleSnooze = useCallback(async () => {
-    if (!alarm || busy) return;
+    if (!alarmId || busy) return;
     setBusy(true);
     try {
-      const result = await snoozeAlarm(alarm.id);
+      const result = await snoozeAlarm(alarmId);
       silence();
       const ringAt = new Date(result.ringAt);
-      await stopRinging(alarm.id);
-      if (!result.test) await scheduleSnooze(alarm, ringAt);
+      await stopRinging(alarmId);
+      if (!result.test) {
+        await scheduleSnooze({ ...alarmInfo, donationAmount: result.donationAmount }, ringAt);
+      }
       router.replace({
         pathname: "/alarm/snooze-charge",
         params: {
@@ -159,7 +175,7 @@ export default function ActiveAlarmScreen() {
     } finally {
       setBusy(false);
     }
-  }, [alarm, busy]);
+  }, [alarmId, alarm, busy]);
 
   // Shake to dismiss: count distinct jolts above the threshold
   useEffect(() => {
@@ -183,7 +199,7 @@ export default function ActiveAlarmScreen() {
 
   const timeStr = time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 
-  const confirmMethod = alarm?.confirmationMethod ?? "button";
+  const confirmMethod = ready ? (alarm?.confirmationMethod ?? "button") : null;
 
   return (
     <View
@@ -205,6 +221,7 @@ export default function ActiveAlarmScreen() {
       </View>
 
       {/* Confirmation method */}
+      {!ready && <ActivityIndicator size="large" color="#FF5A3C" />}
       {confirmMethod === "button" && (
         <TouchableOpacity style={styles.bigDismissBtn} onPress={handleDismiss}>
           <Feather name="sun" size={32} color="#0A0A0F" />

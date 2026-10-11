@@ -99,7 +99,8 @@ Routes:
 - Donation amounts are tracked in the DB and displayed in stats
 - Currency: USD (`$`) everywhere
 - After pulling schema changes run `pnpm --filter @workspace/db run push` to create new tables (e.g. `sessions`)
-- Alarms ring via local notifications (expo-notifications, exact alarms, `alarm-v1` channel with `assets/sounds/alarm.wav`). Each ring is a burst of notifications over 10 minutes; schedule covers 7 days and is re-synced on every app open (`lib/alarmNotifications.ts`). Requires a native build (EAS), not Expo Go.
+- Android alarms use a local native module `artifacts/wake-or-donate/modules/alarm-clock` (Kotlin): `AlarmManager.setAlarmClock` (exact, works in Doze), a full-screen-intent notification on the alarm audio stream that loops (`FLAG_INSISTENT`) for up to 10 min, and a deep link `wake-or-donate://alarm/active?id=N` that opens the ring screen over the lock screen. The schedule (next 7 days + snoozes) is pushed from JS (`lib/alarmNotifications.ts`) on every app open and restored after reboot by `BootReceiver`. iOS/web fall back to expo-notifications bursts. Requires a native build (EAS), not Expo Go.
+- `app/alarm-setup.tsx` walks the user through Android permissions (notifications, exact alarms, full-screen, battery, Xiaomi autostart / lock-screen pop-ups).
 - Server tracks each ring in `alarm_events` (`src/lib/events.ts`): a background scheduler (every 30s) opens occurrences and charges a miss (2× amount) 10 min + 5 min grace after the last ring. Max 3 snoozes per occurrence. Rules live in `src/lib/rules.ts`.
 - The scheduler runs inside the API process, so the deployment must stay running (Reserved VM, not Autoscale).
 - "Test Alarm" outside a real ring time runs in test mode: nothing is charged.

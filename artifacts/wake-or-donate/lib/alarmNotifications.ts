@@ -2,20 +2,21 @@ import { Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import type { Alarm } from "@/context/AlarmContext";
+import { AlarmClock, type AlarmClockEntry } from "@/modules/alarm-clock";
+
+// Two delivery paths:
+// - Android: the native AlarmClock module (system alarm-clock alarms with a full-screen,
+//   looping ring that opens the ring screen over the lock screen).
+// - Elsewhere (iOS): local notifications, sent as a burst so the phone keeps ringing.
 
 // Android locks a channel's sound once created; bump the id to change it.
 export const ALARM_CHANNEL_ID = "alarm-v1";
 const ALARM_SOUND = "alarm.wav";
-
-// Each ring is a burst of notifications so the phone keeps sounding for the
-// whole 10-minute window even when the app is closed.
 const BURST_OFFSETS_MIN = [0, 1, 2, 3, 4, 5, 7, 9];
-const RING_WINDOW_MS = 10 * 60_000;
-// How far ahead to schedule. Android allows ~500 pending alarms per app; the
-// schedule is refreshed every time the app opens (which every ring causes).
+// How far ahead to schedule; the schedule is refreshed on every app open (which every ring causes)
 const HORIZON_DAYS = 7;
-// After the user dismisses/snoozes, the rest of that ring must not come back on the next sync
-const SUPPRESS_KEY = "alarm_suppressed_until";
+const SNOOZE_KEY = "alarm_snoozes"; // { [alarmId]: ringAt epoch ms }
+export const ALARM_SETUP_SEEN_KEY = "alarm_setup_seen_v1";
 
 type AlarmInfo = Pick<Alarm, "id" | "label" | "donationAmount">;
 
@@ -23,13 +24,17 @@ export interface AlarmNotificationData {
   kind: "alarm";
   alarmId: number;
   at: number; // epoch ms this notification fires
-  snooze?: boolean;
   [key: string]: unknown;
 }
 
 export function isAlarmData(data: unknown): data is AlarmNotificationData {
   return !!data && (data as AlarmNotificationData).kind === "alarm";
 }
+
+const useNativeAlarms = Platform.OS === "android" && AlarmClock !== null;
+
+/** True when rings come from the native alarm clock, which plays the ring sound itself. */
+export const nativeAlarmsAvailable = useNativeAlarms;
 
 if (Platform.OS !== "web") {
   Notifications.setNotificationHandler({
@@ -44,7 +49,7 @@ if (Platform.OS !== "web") {
 
 export async function setupAlarmNotifications(): Promise<boolean> {
   if (Platform.OS === "web") return false;
-  if (Platform.OS === "android") {
+  if (Platform.OS === "android" && !useNativeAlarms) {
     await Notifications.setNotificationChannelAsync(ALARM_CHANNEL_ID, {
       name: "Alarms",
       description: "Wake-up alarms",
@@ -66,40 +71,65 @@ export async function setupAlarmNotifications(): Promise<boolean> {
   return requested.granted;
 }
 
-async function readSuppressed(): Promise<Record<string, number>> {
+async function readSnoozes(): Promise<Record<string, number>> {
   try {
-    return JSON.parse((await AsyncStorage.getItem(SUPPRESS_KEY)) ?? "{}");
+    return JSON.parse((await AsyncStorage.getItem(SNOOZE_KEY)) ?? "{}");
   } catch {
     return {};
   }
 }
 
-async function suppress(alarmId: number, until: number) {
+async function writeSnoozes(snoozes: Record<string, number>) {
   const now = Date.now();
-  const current = await readSuppressed();
-  const pruned = Object.fromEntries(Object.entries(current).filter(([, t]) => t > now));
-  await AsyncStorage.setItem(SUPPRESS_KEY, JSON.stringify({ ...pruned, [alarmId]: until }));
+  const pruned = Object.fromEntries(Object.entries(snoozes).filter(([, at]) => at > now));
+  await AsyncStorage.setItem(SNOOZE_KEY, JSON.stringify(pruned));
 }
 
-/** Ring start times for an alarm, including one still within its ring window. */
-function ringStarts(alarm: Alarm, now: Date): Date[] {
+/** Upcoming ring starts of an alarm (future only, so a ring already in progress is never re-added). */
+function ringStarts(alarm: Alarm, now: Date): number[] {
   const [hh, mm] = alarm.time.split(":").map(Number);
-  const result: Date[] = [];
-  for (let d = -1; d <= HORIZON_DAYS; d++) {
+  const result: number[] = [];
+  for (let d = 0; d <= HORIZON_DAYS; d++) {
     const at = new Date(now);
     at.setDate(now.getDate() + d);
     at.setHours(hh, mm, 0, 0);
-    if (at.getTime() + RING_WINDOW_MS > now.getTime() && alarm.days.includes(at.getDay())) result.push(at);
+    if (at > now && alarm.days.includes(at.getDay())) result.push(at.getTime());
   }
   return result;
 }
 
-function schedule(alarm: AlarmInfo, at: number, snooze: boolean) {
-  const data: AlarmNotificationData = { kind: "alarm", alarmId: alarm.id, at, ...(snooze ? { snooze } : {}) };
+function entryFor(alarm: AlarmInfo, at: number, snooze: boolean): AlarmClockEntry {
+  return {
+    key: `${alarm.id}:${snooze ? "snooze" : "ring"}:${at}`,
+    alarmId: alarm.id,
+    at,
+    title: snooze ? `⏰ ${alarm.label} (snoozed)` : `⏰ ${alarm.label}`,
+    body: `Get up or donate $${alarm.donationAmount}`,
+  };
+}
+
+/** Everything that should be scheduled right now. */
+async function wantedEntries(alarms: Alarm[]): Promise<AlarmClockEntry[]> {
+  const now = new Date();
+  const snoozes = await readSnoozes();
+  const entries: AlarmClockEntry[] = [];
+  for (const alarm of alarms) {
+    if (!alarm.isEnabled) continue;
+    for (const at of ringStarts(alarm, now)) entries.push(entryFor(alarm, at, false));
+    const snoozeAt = snoozes[alarm.id];
+    if (snoozeAt && snoozeAt > now.getTime()) entries.push(entryFor(alarm, snoozeAt, true));
+  }
+  return entries;
+}
+
+// --- iOS / fallback: local notification bursts ---
+
+function scheduleNotification(entry: AlarmClockEntry, at: number) {
+  const data: AlarmNotificationData = { kind: "alarm", alarmId: entry.alarmId, at, entryKey: entry.key };
   return Notifications.scheduleNotificationAsync({
     content: {
-      title: snooze ? `⏰ ${alarm.label} (snoozed)` : `⏰ ${alarm.label}`,
-      body: `Get up or donate $${alarm.donationAmount}. Tap to dismiss.`,
+      title: entry.title,
+      body: `${entry.body}. Tap to dismiss.`,
       sound: ALARM_SOUND,
       priority: Notifications.AndroidNotificationPriority.MAX,
       sticky: true,
@@ -116,79 +146,96 @@ async function scheduledAlarmNotifications() {
   return scheduled.flatMap(n => isAlarmData(n.content.data) ? [{ id: n.identifier, data: n.content.data }] : []);
 }
 
+async function syncNotificationBursts(entries: AlarmClockEntry[]) {
+  const now = Date.now();
+  const wanted = new Map<string, { entry: AlarmClockEntry; at: number }>();
+  for (const entry of entries) {
+    for (const offset of BURST_OFFSETS_MIN) {
+      const at = entry.at + offset * 60_000;
+      if (at > now) wanted.set(`${entry.key}@${at}`, { entry, at });
+    }
+  }
+  const existing = new Set<string>();
+  for (const { id, data } of await scheduledAlarmNotifications()) {
+    const key = `${data.entryKey}@${data.at}`;
+    // Keep the rest of a ring that already started (stopRinging cancels it explicitly)
+    const ringStart = Number(String(data.entryKey).split(":")[2]);
+    const inProgress = ringStart <= now && data.at > now;
+    if (wanted.has(key) || inProgress) existing.add(key);
+    else await Notifications.cancelScheduledNotificationAsync(id);
+  }
+  for (const [key, { entry, at }] of wanted) {
+    if (!existing.has(key)) await scheduleNotification(entry, at);
+  }
+}
+
+// --- shared API ---
+
+let lastAlarms: Alarm[] = [];
 let queue: Promise<void> = Promise.resolve();
-// Serialize all schedule changes: overlapping syncs would double-schedule
+// Serialize all schedule changes so overlapping syncs can't interleave
 function enqueue(task: () => Promise<void>): Promise<void> {
   if (Platform.OS === "web") return Promise.resolve();
-  queue = queue.then(task).catch(e => console.warn("Alarm notification update failed", e));
+  queue = queue.then(task).catch(e => console.warn("Alarm schedule update failed", e));
   return queue;
 }
 
-/** Brings scheduled notifications in line with the alarm list (adds missing, removes stale). */
-export function syncAlarmNotifications(alarms: Alarm[]): Promise<void> {
-  return enqueue(async () => {
-    const now = new Date();
-    const suppressed = await readSuppressed();
-    const wanted = new Map<string, { alarm: Alarm; at: number }>();
-    for (const alarm of alarms) {
-      if (!alarm.isEnabled) continue;
-      for (const start of ringStarts(alarm, now)) {
-        for (const offset of BURST_OFFSETS_MIN) {
-          const at = start.getTime() + offset * 60_000;
-          if (at <= now.getTime() || at <= (suppressed[alarm.id] ?? 0)) continue;
-          wanted.set(`${alarm.id}:${at}`, { alarm, at });
-        }
-      }
-    }
-    const existing = await scheduledAlarmNotifications();
-    const existingKeys = new Set<string>();
-    for (const { id, data } of existing) {
-      const key = `${data.alarmId}:${data.at}`;
-      const alarmStillEnabled = alarms.some(a => a.id === data.alarmId && a.isEnabled);
-      // Snooze rings are kept while their alarm exists; regular rings must still be wanted
-      if ((data.snooze && alarmStillEnabled) || (!data.snooze && wanted.has(key))) {
-        existingKeys.add(key);
-      } else {
-        await Notifications.cancelScheduledNotificationAsync(id);
-      }
-    }
-    for (const [key, { alarm, at }] of wanted) {
-      if (!existingKeys.has(key)) await schedule(alarm, at, false);
-    }
-  });
+async function applySchedule() {
+  const entries = await wantedEntries(lastAlarms);
+  if (useNativeAlarms) AlarmClock!.setSchedule(JSON.stringify(entries));
+  else await syncNotificationBursts(entries);
 }
 
-/** Stops the ring in progress (rest of the burst, pending snooze rings, notifications on screen). */
-export function stopRinging(alarmId: number): Promise<void> {
+/** Makes the phone's alarm schedule match the alarm list. */
+export function syncAlarmNotifications(alarms: Alarm[]): Promise<void> {
+  lastAlarms = alarms;
+  return enqueue(applySchedule);
+}
+
+/** Stops the ring in progress for an alarm (after dismiss or snooze). */
+export function stopRinging(alarmId: number, opts: { clearSnooze?: boolean } = {}): Promise<void> {
   return enqueue(async () => {
-    const until = Date.now() + RING_WINDOW_MS + 5 * 60_000;
-    await suppress(alarmId, until);
-    for (const { id, data } of await scheduledAlarmNotifications()) {
-      if (data.alarmId === alarmId && (data.snooze || data.at <= until)) {
-        await Notifications.cancelScheduledNotificationAsync(id);
-      }
+    if (opts.clearSnooze) {
+      const snoozes = await readSnoozes();
+      delete snoozes[alarmId];
+      await writeSnoozes(snoozes);
     }
-    const presented = await Notifications.getPresentedNotificationsAsync();
-    for (const n of presented) {
+    if (useNativeAlarms) {
+      AlarmClock!.stopRinging(alarmId);
+      await applySchedule();
+      return;
+    }
+    const soon = Date.now() + 15 * 60_000;
+    for (const { id, data } of await scheduledAlarmNotifications()) {
+      if (data.alarmId === alarmId && data.at <= soon) await Notifications.cancelScheduledNotificationAsync(id);
+    }
+    for (const n of await Notifications.getPresentedNotificationsAsync()) {
       const data = n.request.content.data;
       if (isAlarmData(data) && data.alarmId === alarmId) await Notifications.dismissNotificationAsync(n.request.identifier);
     }
+    await applySchedule();
   });
 }
 
+/** Rings the alarm again at [ringAt]. */
 export function scheduleSnooze(alarm: AlarmInfo, ringAt: Date): Promise<void> {
   return enqueue(async () => {
-    for (const offset of BURST_OFFSETS_MIN) {
-      const at = ringAt.getTime() + offset * 60_000;
-      if (at > Date.now()) await schedule(alarm, at, true);
-    }
+    const snoozes = await readSnoozes();
+    snoozes[alarm.id] = ringAt.getTime();
+    await writeSnoozes(snoozes);
+    await applySchedule();
   });
 }
 
 export function cancelAllAlarmNotifications(): Promise<void> {
+  lastAlarms = [];
   return enqueue(async () => {
+    await AsyncStorage.removeItem(SNOOZE_KEY);
+    if (useNativeAlarms) {
+      AlarmClock!.setSchedule("[]");
+      return;
+    }
     await Notifications.cancelAllScheduledNotificationsAsync();
     await Notifications.dismissAllNotificationsAsync();
-    await AsyncStorage.removeItem(SUPPRESS_KEY);
   });
 }

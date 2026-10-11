@@ -4,8 +4,10 @@ import * as Notifications from "expo-notifications";
 import { router } from "expo-router";
 import { useAuth } from "@/context/AuthContext";
 import { useAlarms } from "@/context/AlarmContext";
-import { isAlarmData, setupAlarmNotifications } from "@/lib/alarmNotifications";
+import { isAlarmData, setupAlarmNotifications, ALARM_SETUP_SEEN_KEY } from "@/lib/alarmNotifications";
 import { ringingAlarm } from "@/lib/ringingState";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AlarmClock } from "@/modules/alarm-clock";
 
 // Ignore taps on notifications older than this (e.g. a stale one restored after restart)
 const MAX_RESPONSE_AGE_MS = 30 * 60_000;
@@ -41,7 +43,16 @@ export function AlarmRuntime() {
   const { fetchAlarms, fetchMissedEvents } = useAlarms();
 
   useEffect(() => {
-    if (token) setupAlarmNotifications().catch(() => {});
+    if (!token) return;
+    (async () => {
+      await setupAlarmNotifications().catch(() => {});
+      // First sign-in on Android: walk the user through the permissions alarms need
+      if (Platform.OS !== "android" || !AlarmClock) return;
+      const seen = await AsyncStorage.getItem(ALARM_SETUP_SEEN_KEY).catch(() => "1");
+      const status = AlarmClock.getStatus();
+      const missing = !status.notifications || !status.exactAlarms || !status.fullScreen;
+      if ((!seen || missing) && ringingAlarm.id === null) router.push("/alarm-setup");
+    })();
   }, [token]);
 
   // An alarm fired while the app is open: go straight to the ring screen

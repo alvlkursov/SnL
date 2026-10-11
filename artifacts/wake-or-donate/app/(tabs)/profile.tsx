@@ -148,6 +148,12 @@ export default function ProfileScreen() {
         <Divider />
         {user ? (
           <>
+            {Platform.OS === "android" && (
+              <>
+                <Row icon="bell" label="Alarm setup" onPress={() => router.push("/alarm-setup")} />
+                <Divider />
+              </>
+            )}
             <Row icon="log-out" label="Sign Out" onPress={handleLogout} danger />
             <Divider />
             <Row icon="trash-2" label="Delete Account" onPress={() => setShowDelete(true)} danger />
