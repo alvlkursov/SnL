@@ -1,13 +1,14 @@
 import React, { useState, useCallback } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Platform, Alert, Switch, RefreshControl,
+  Platform, Switch, RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAlarms, Alarm } from "@/context/AlarmContext";
 import { useAuth } from "@/context/AuthContext";
+import { confirmAction } from "@/lib/confirm";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const CATEGORY_COLORS = {
@@ -86,10 +87,8 @@ function AlarmCard({ alarm, onToggle, onPress, onDelete }: {
           />
           <TouchableOpacity
             onPress={() => {
-              Alert.alert("Delete Alarm", "Are you sure?", [
-                { text: "Cancel", style: "cancel" },
-                { text: "Delete", style: "destructive", onPress: () => onDelete(alarm.id) },
-              ]);
+              confirmAction("Delete Alarm", "Are you sure?", "Delete")
+                .then(ok => { if (ok) onDelete(alarm.id); });
             }}
             style={styles.deleteBtn}
           >

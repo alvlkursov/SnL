@@ -130,17 +130,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem("auth_user", JSON.stringify(userData));
   }
 
+  // Signs out locally right away; server/alarm cleanup must never block it
   async function logout() {
-    if (token) {
-      try {
-        await fetch(`${BASE_URL}/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch {}
-    }
-    await cancelAllAlarmNotifications();
+    const oldToken = token;
     await clearAuth();
+    cancelAllAlarmNotifications().catch(() => {});
+    if (oldToken) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      fetch(`${BASE_URL}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${oldToken}` },
+        signal: controller.signal,
+      }).catch(() => {}).finally(() => clearTimeout(timer));
+    }
   }
 
   async function deleteAccount(password: string) {

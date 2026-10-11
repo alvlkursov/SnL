@@ -23,7 +23,7 @@ router.post("/", async (req, res) => {
   const userId = getUserId(req);
   const charity = body.charityId
     ? (await db.select().from(charitiesTable).where(eq(charitiesTable.id, body.charityId)).limit(1))[0]
-    : await resolveCharity({ charityId: null, charityCategory: "recommended" });
+    : await resolveCharity({ charityId: null, charityCategory: "favorite", userId });
   if (!charity) { res.status(404).json({ error: "Not Found", message: "Charity not found" }); return; }
   const donation = await db.transaction(tx =>
     recordDonation(tx, { userId, alarmId: null, charity, amount: body.amount, reason: "voluntary" }));

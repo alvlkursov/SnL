@@ -51,9 +51,7 @@ export default function CreateAlarmScreen() {
   const fetchCharities = async () => {
     if (!token) return;
     try {
-      const url = charityCategory === "favorite"
-        ? `${BASE_URL}/charities`
-        : `${BASE_URL}/charities?category=${charityCategory}`;
+      const url = `${BASE_URL}/charities?category=${charityCategory}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
@@ -236,10 +234,20 @@ export default function CreateAlarmScreen() {
           </View>
 
           {/* Charity list */}
+          {charityCategory === "favorite" && charities.length === 0 && (
+            <TouchableOpacity style={{ marginTop: 10 }} onPress={() => router.push("/(tabs)/profile")}>
+              <Text style={{ fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular" }}>
+                You haven't picked favorites yet — until you do, donations go to a featured charity.{" "}
+                <Text style={{ color: "#30D158" }}>Choose favorites in Profile →</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
           {charities.length > 0 && (
             <View style={styles.charityList}>
               <Text style={styles.charityListLabel}>
-                {charityCategory === "favorite" ? "All charities (choose one)" : "Select specific charity (optional)"}
+                {charityCategory === "favorite"
+                  ? "Your favorites (optional — otherwise rotates between them)"
+                  : "Select specific charity (optional)"}
               </Text>
               {charities.map((c) => (
                 <TouchableOpacity

@@ -1,24 +1,19 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, Alert, TextInput, Modal, FlatList,
+  Platform, Alert, TextInput, Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import Constants from "expo-constants";
-import { useAuth, publicPageUrl } from "@/context/AuthContext";
+import { useAuth, publicPageUrl, BASE_URL } from "@/context/AuthContext";
+import { FavoriteCharitiesPicker, MAX_FAVORITES, type CharityInfo } from "@/components/FavoriteCharitiesPicker";
+import { confirmAction } from "@/lib/confirm";
 import { router } from "expo-router";
 
 const SUPPORT_EMAIL = "al.vl.kursov@gmail.com";
 
-const CHARITIES = [
-  "Animal Shelter", "Red Cross", "UNICEF", "WWF", "Doctors Without Borders",
-  "Habitat for Humanity", "Save the Children", "Amnesty International",
-  "Greenpeace", "Food Bank",
-];
-
-const DEFAULT_CHARITY_OPTIONS = CHARITIES;
 
 function SectionHeader({ title }: { title: string }) {
   return <Text style={styles.sectionTitle}>{title}</Text>;
@@ -57,7 +52,7 @@ function Divider() {
 }
 
 export default function ProfileScreen() {
-  const { user, logout, deleteAccount } = useAuth();
+  const { user, token, logout, deleteAccount } = useAuth();
   const [showDelete, setShowDelete] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteError, setDeleteError] = useState("");
@@ -69,24 +64,23 @@ export default function ProfileScreen() {
   const [cardConnected, setCardConnected] = useState(false);
   const [donationAmount, setDonationAmount] = useState("5");
   const [snoozeLimit, setSnoozeLimit] = useState("3");
-  const [defaultCharity, setDefaultCharity] = useState("Animal Shelter");
   const [dailyLimit, setDailyLimit] = useState("20");
   const [monthlyLimit, setMonthlyLimit] = useState("200");
-  const [favoriteCharities, setFavoriteCharities] = useState<string[]>(["Animal Shelter"]);
-
-  const [showDefaultCharityPicker, setShowDefaultCharityPicker] = useState(false);
+  const [favoriteCharities, setFavoriteCharities] = useState<CharityInfo[]>([]);
   const [showFavoritePicker, setShowFavoritePicker] = useState(false);
 
-  const handleLogout = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out", style: "destructive", onPress: async () => {
-          await logout();
-          router.replace("/auth");
-        }
-      },
-    ]);
+  useEffect(() => {
+    if (!token) { setFavoriteCharities([]); return; }
+    fetch(`${BASE_URL}/charities/favorites`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : []))
+      .then(setFavoriteCharities)
+      .catch(() => {});
+  }, [token]);
+
+  const handleLogout = async () => {
+    if (!(await confirmAction("Sign Out", "Are you sure you want to sign out?", "Sign Out"))) return;
+    await logout();
+    router.replace("/auth");
   };
 
   const handleSignIn = () => router.replace("/auth");
@@ -118,17 +112,6 @@ export default function ProfileScreen() {
     else if (label === "About") {
       Alert.alert("WakeOrDonate", `Version ${Constants.expoConfig?.version ?? "1.0.0"}\nPublished by Aleksandr Kursov`);
     }
-  };
-
-  const toggleFavorite = (charity: string) => {
-    setFavoriteCharities(prev => {
-      if (prev.includes(charity)) return prev.filter(c => c !== charity);
-      if (prev.length >= 3) {
-        Alert.alert("Limit reached", "You can only pick 3 favorite charities.");
-        return prev;
-      }
-      return [...prev, charity];
-    });
   };
 
   return (
@@ -240,16 +223,9 @@ export default function ProfileScreen() {
         <Divider />
         <Row
           icon="heart"
-          label="Default charity"
-          value={defaultCharity}
-          onPress={() => setShowDefaultCharityPicker(true)}
-        />
-        <Divider />
-        <Row
-          icon="star"
           label="Favorite charities"
-          value={favoriteCharities.length === 0 ? "Choose up to 3" : favoriteCharities.join(", ")}
-          onPress={() => setShowFavoritePicker(true)}
+          value={favoriteCharities.length === 0 ? `Choose up to ${MAX_FAVORITES}` : favoriteCharities.map(c => c.name).join(", ")}
+          onPress={() => (user ? setShowFavoritePicker(true) : router.replace("/auth"))}
         />
         <Divider />
         <View style={styles.row}>
@@ -336,54 +312,12 @@ export default function ProfileScreen() {
         </View>
       </Modal>
 
-      {/* ── Default Charity Picker ── */}
-      <Modal visible={showDefaultCharityPicker} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDefaultCharityPicker(false)}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Default Charity</Text>
-            <FlatList
-              data={DEFAULT_CHARITY_OPTIONS}
-              keyExtractor={i => i}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.pickerRow}
-                  onPress={() => { setDefaultCharity(item); setShowDefaultCharityPicker(false); }}
-                >
-                  <Text style={[styles.pickerText, item === defaultCharity && { color: "#FF5A3C" }]}>{item}</Text>
-                  {item === defaultCharity && <Feather name="check" size={16} color="#FF5A3C" />}
-                </TouchableOpacity>
-              )}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* ── Favorite Charities Picker ── */}
-      <Modal visible={showFavoritePicker} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowFavoritePicker(false)}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Favorite Charities (max 3)</Text>
-            <FlatList
-              data={CHARITIES}
-              keyExtractor={i => i}
-              renderItem={({ item }) => {
-                const selected = favoriteCharities.includes(item);
-                return (
-                  <TouchableOpacity style={styles.pickerRow} onPress={() => toggleFavorite(item)}>
-                    <Text style={[styles.pickerText, selected && { color: "#FF5A3C" }]}>{item}</Text>
-                    {selected && <Feather name="check" size={16} color="#FF5A3C" />}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-            <TouchableOpacity style={styles.doneBtn} onPress={() => setShowFavoritePicker(false)}>
-              <Text style={styles.doneBtnText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <FavoriteCharitiesPicker
+        visible={showFavoritePicker}
+        selectedIds={favoriteCharities.map(c => c.id)}
+        onClose={() => setShowFavoritePicker(false)}
+        onSaved={setFavoriteCharities}
+      />
     </ScrollView>
   );
 }

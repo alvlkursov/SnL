@@ -99,6 +99,7 @@ export async function chargeMissedEvents(now = new Date()) {
         charity,
         amount: alarm.donationAmount * MISSED_MULTIPLIER,
         reason: "missed",
+        rotate: alarm.charityCategory === "favorite",
       });
       await tx.update(alarmEventsTable).set({ missedDonationId: donation.id }).where(eq(alarmEventsTable.id, event.id));
     });

@@ -173,7 +173,8 @@ router.post("/:id/snooze", async (req, res) => {
     )).returning();
     if (!claimed) return null;
     await tx.update(alarmsTable).set({ snoozeCount: sql`${alarmsTable.snoozeCount} + 1` }).where(eq(alarmsTable.id, id));
-    return recordDonation(tx, { userId, alarmId: id, charity, amount: alarm.donationAmount, reason: "snooze" });
+    return recordDonation(tx, { userId, alarmId: id, charity, amount: alarm.donationAmount, reason: "snooze",
+      rotate: alarm.charityCategory === "favorite" });
   });
   if (!donation) {
     res.status(409).json({ error: "Conflict", message: "This alarm can no longer be snoozed" });

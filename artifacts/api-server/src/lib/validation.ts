@@ -27,6 +27,10 @@ export const updateMeSchema = z.object({
   timezone: timezone.optional(),
 });
 
+export const setFavoritesSchema = z.object({
+  charityIds: z.array(z.number().int().positive()).max(20),
+});
+
 export const voluntaryDonationSchema = z.object({
   amount: z.number().min(1).max(500),
   charityId: z.number().int().positive().optional(),

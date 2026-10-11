@@ -46,13 +46,18 @@ export default function AlarmDetailScreen() {
   const [snoozeDuration, setSnoozeDuration] = useState(String(alarm?.snoozeDurationMinutes ?? 5));
 
   useEffect(() => {
-    if (token && charityCategory !== "favorite") {
-      fetch(`${BASE_URL}/charities?category=${charityCategory}`, { headers: { Authorization: `Bearer ${token}` } })
-        .then(r => r.json())
-        .then(setCharities)
-        .catch(() => {});
-    }
+    if (!token) return;
+    fetch(`${BASE_URL}/charities?category=${charityCategory}`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : []))
+      .then(setCharities)
+      .catch(() => {});
   }, [charityCategory, token]);
+
+  const changeCategory = (cat: typeof charityCategory) => {
+    if (cat === charityCategory) return;
+    setCharityCategory(cat);
+    setSelectedCharityId(null); // a charity from another category no longer applies
+  };
 
   if (!alarm) {
     return (
@@ -187,13 +192,21 @@ export default function AlarmDetailScreen() {
                 <TouchableOpacity
                   key={cat}
                   style={[styles.catBtn, charityCategory === cat && { borderColor: colors[cat], backgroundColor: colors[cat] + "22" }]}
-                  onPress={() => setCharityCategory(cat)}
+                  onPress={() => changeCategory(cat)}
                 >
                   <Text style={[styles.catBtnText, charityCategory === cat && { color: colors[cat] }]}>{labels[cat]}</Text>
                 </TouchableOpacity>
               );
             })}
           </View>
+          {charityCategory === "favorite" && charities.length === 0 && (
+            <TouchableOpacity style={{ marginTop: 10 }} onPress={() => router.push("/(tabs)/profile")}>
+              <Text style={{ fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular" }}>
+                You haven't picked favorites yet — until you do, donations go to a featured charity.{" "}
+                <Text style={{ color: "#30D158" }}>Choose favorites in Profile →</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
           {charities.length > 0 && (
             <View style={{ gap: 6, marginTop: 10 }}>
               {charities.map((c) => (
