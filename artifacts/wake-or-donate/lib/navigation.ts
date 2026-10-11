@@ -8,3 +8,8 @@ export function closeScreen() {
   if (router.canGoBack()) router.back();
   else router.replace("/(tabs)");
 }
+
+/** Ends an alarm flow (ring → woke up → receipt): closes every screen of it and lands on Home. */
+export function goHome() {
+  router.dismissTo("/(tabs)");
+}

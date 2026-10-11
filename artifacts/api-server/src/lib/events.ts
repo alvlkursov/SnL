@@ -33,7 +33,7 @@ async function openEvent(alarm: Alarm, occurrence: { localDate: string; schedule
     deadline: new Date(occurrence.scheduledAt.getTime() + minutes(RING_WINDOW_MINUTES)),
   }).onConflictDoNothing();
   const [event] = await db.select().from(alarmEventsTable)
-    .where(and(eq(alarmEventsTable.alarmId, alarm.id), eq(alarmEventsTable.localDate, occurrence.localDate)))
+    .where(and(eq(alarmEventsTable.alarmId, alarm.id), eq(alarmEventsTable.scheduledAt, occurrence.scheduledAt)))
     .limit(1);
   return event;
 }
@@ -68,7 +68,9 @@ function reportedOccurrence(ringAt: Date | undefined, tz: string, now: Date) {
   if (!ringAt || Number.isNaN(ringAt.getTime())) return null;
   const age = now.getTime() - ringAt.getTime();
   if (age < -EARLY_TOLERANCE_MS || age > minutes(RING_WINDOW_MINUTES + GRACE_MINUTES)) return null;
-  return { localDate: localParts(ringAt, tz).localDate, scheduledAt: ringAt };
+  // Whole minutes, so the phone's report and the scheduler land on the same occurrence
+  const scheduledAt = new Date(Math.floor(ringAt.getTime() / 60_000) * 60_000);
+  return { localDate: localParts(scheduledAt, tz).localDate, scheduledAt };
 }
 
 /** Opens occurrences for alarms whose time has just come. */

@@ -166,7 +166,7 @@ export default function ActiveAlarmScreen() {
       if (alarmId) await stopRinging(alarmId, { clearSnooze: true });
       router.replace({
         pathname: "/alarm/woke-up",
-        params: { alarmName: alarmInfo.label, streak: String(result?.streak ?? 0) },
+        params: { alarmName: alarmInfo.label, streak: String(result?.streak ?? 0), test: result?.test ? "true" : "false" },
       });
     } catch (e: any) {
       // Don't torture the user over a network error, but make clear it isn't confirmed yet

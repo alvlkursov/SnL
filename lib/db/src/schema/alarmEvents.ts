@@ -3,7 +3,7 @@ import { usersTable } from "./users";
 import { alarmsTable } from "./alarms";
 import { donationsTable } from "./donations";
 
-// One row per time an alarm actually goes off (one per alarm per local day).
+// One row per time an alarm actually goes off (an alarm moved to a later time the same day rings again).
 export const alarmEventsTable = pgTable("alarm_events", {
   id: serial("id").primaryKey(),
   alarmId: integer("alarm_id").notNull().references(() => alarmsTable.id, { onDelete: "cascade" }),
@@ -18,7 +18,7 @@ export const alarmEventsTable = pgTable("alarm_events", {
   resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (t) => [
-  uniqueIndex("alarm_events_alarm_day_idx").on(t.alarmId, t.localDate),
+  uniqueIndex("alarm_events_alarm_time_idx").on(t.alarmId, t.scheduledAt),
   index("alarm_events_status_deadline_idx").on(t.status, t.deadline),
 ]);
 

@@ -12,7 +12,7 @@ router.get("/version", (_req, res) => {
   res.json({
     commit: process.env.BUILD_COMMIT ?? "dev",
     builtAt: process.env.BUILD_TIME ?? null,
-    features: ["sessions", "alarm-events", "account-deletion", "privacy-page", "charity-catalog", "favorites", "stats-v2"],
+    features: ["sessions", "alarm-events", "account-deletion", "privacy-page", "charity-catalog", "favorites", "stats-v2", "ring-events"],
   });
 });
 
