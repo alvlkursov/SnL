@@ -1,7 +1,8 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { charitiesTable, donationsTable, usersTable } from "@workspace/db/schema";
-import { desc, eq } from "drizzle-orm";
+import { alarmEventsTable, charitiesTable, donationsTable } from "@workspace/db/schema";
+import { desc, eq, sql } from "drizzle-orm";
+import { currentStreak } from "../lib/events.js";
 import { authMiddleware, getUserId } from "../lib/auth.js";
 import { parseBody, voluntaryDonationSchema } from "../lib/validation.js";
 import { recordDonation, resolveCharity } from "../lib/donations.js";
@@ -30,25 +31,32 @@ router.post("/", async (req, res) => {
   res.status(201).json(donation);
 });
 
+// Computed from the ring history itself, so it can't drift from what actually happened.
+// Test rings (outside a real alarm time) are not recorded and don't count.
 router.get("/stats", async (req, res) => {
   const userId = getUserId(req);
-  const donations = await db.select().from(donationsTable).where(eq(donationsTable.userId, userId));
-  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const [events] = await db.select({
+    dismissed: sql<number>`count(*) filter (where ${alarmEventsTable.status} = 'dismissed')`.mapWith(Number),
+    missed: sql<number>`count(*) filter (where ${alarmEventsTable.status} = 'missed')`.mapWith(Number),
+    onTime: sql<number>`count(*) filter (where ${alarmEventsTable.status} = 'dismissed' and ${alarmEventsTable.snoozesUsed} = 0)`.mapWith(Number),
+    snoozes: sql<number>`coalesce(sum(${alarmEventsTable.snoozesUsed}), 0)`.mapWith(Number),
+  }).from(alarmEventsTable).where(eq(alarmEventsTable.userId, userId));
+  const [money] = await db.select({
+    total: sql<number>`coalesce(sum(${donationsTable.amount}), 0)`.mapWith(Number),
+    count: sql<number>`count(*)`.mapWith(Number),
+  }).from(donationsTable).where(eq(donationsTable.userId, userId));
 
-  const totalDonated = donations.reduce((sum, d) => sum + d.amount, 0);
-  const snoozeCount = donations.filter(d => d.reason === "snooze").length;
-  const missedCount = donations.filter(d => d.reason === "missed").length;
-
+  const resolved = events.dismissed + events.missed;
   res.json({
-    totalDonated: user?.totalDonated ?? totalDonated,
-    totalDonations: donations.length,
-    alarmsTriggered: user?.alarmsTriggered ?? 0,
-    alarmsDismissed: user?.alarmsDismissed ?? 0,
-    snoozeCount,
-    missedCount,
-    successRate: user?.alarmsTriggered
-      ? Math.round((user.alarmsDismissed / user.alarmsTriggered) * 100)
-      : 0,
+    totalDonated: money.total,
+    totalDonations: money.count,
+    alarmsTriggered: resolved,
+    alarmsDismissed: events.dismissed,
+    onTimeCount: events.onTime,
+    missedCount: events.missed,
+    snoozeCount: events.snoozes,
+    successRate: resolved ? Math.round((events.dismissed / resolved) * 100) : 0,
+    streak: await currentStreak(userId),
   });
 });
 
