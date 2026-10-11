@@ -42,8 +42,12 @@ export function FavoriteCharitiesPicker({ visible, selectedIds, onClose, onSaved
     if (catalog.length) return;
     setLoading(true);
     fetch(`${BASE_URL}/charities?category=catalog`)
-      .then(r => (r.ok ? r.json() : Promise.reject(new Error("Couldn't load charities"))))
-      .then(setCatalog)
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error("Couldn't load charities. Check your connection and try again."))))
+      .then((list: CharityInfo[]) => {
+        // An outdated server answers with an empty list instead of the catalog
+        if (!list.length) throw new Error("The charity list is empty — the server may need updating.");
+        setCatalog(list);
+      })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, [visible]);
@@ -115,7 +119,7 @@ export function FavoriteCharitiesPicker({ visible, selectedIds, onClose, onSaved
             <ActivityIndicator color="#FF5A3C" style={{ marginVertical: 32 }} />
           ) : (
             <SectionList
-              style={{ flexGrow: 0 }}
+              style={{ flexGrow: 0, flexShrink: 1 }}
               sections={sections}
               keyExtractor={c => String(c.id)}
               stickySectionHeadersEnabled={false}
@@ -135,7 +139,9 @@ export function FavoriteCharitiesPicker({ visible, selectedIds, onClose, onSaved
                   </TouchableOpacity>
                 );
               }}
-              ListEmptyComponent={<Text style={styles.description}>No charities match "{query}".</Text>}
+              ListEmptyComponent={
+                catalog.length ? <Text style={styles.description}>No charities match "{query}".</Text> : null
+              }
             />
           )}
           {!!error && <Text style={styles.error}>{error}</Text>}
