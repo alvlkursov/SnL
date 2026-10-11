@@ -57,13 +57,14 @@ class AlarmClockModule : Module() {
         "notifications" to notifications,
         "exactAlarms" to AlarmScheduler.canScheduleExact(context),
         "fullScreen" to RingNotification.canUseFullScreen(context),
+        "overlay" to Settings.canDrawOverlays(context),
         "batteryUnrestricted" to (context.getSystemService(Context.POWER_SERVICE) as PowerManager)
           .isIgnoringBatteryOptimizations(context.packageName),
         "isXiaomi" to isXiaomi(),
       )
     }
 
-    // target: app | notifications | exactAlarms | fullScreen | battery | xiaomiAutostart | xiaomiPermissions
+    // target: app | notifications | exactAlarms | fullScreen | overlay | battery | xiaomiAutostart | xiaomiPermissions
     Function("openSettings") { target: String ->
       val pkg = context.packageName
       val candidates = when (target) {
@@ -77,6 +78,7 @@ class AlarmClockModule : Module() {
           listOf(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:$pkg")))
         } else emptyList()
         "battery" -> listOf(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        "overlay" -> listOf(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$pkg")))
         "xiaomiAutostart" -> listOf(
           Intent().setComponent(ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")),
         )

@@ -38,6 +38,12 @@ function steps(status: AlarmClockStatus): Step[] {
       settings: "fullScreen",
     },
     {
+      title: "Show over other apps",
+      description: "Opens the alarm screen by itself even while you're using the phone, instead of just a banner.",
+      ok: status.overlay ?? null,
+      settings: "overlay",
+    },
+    {
       title: "No battery restrictions",
       description: "Find WakeOrDonate and choose \"No restrictions\" / \"Don't optimize\", so the system doesn't block alarms.",
       // Older builds of the native module don't report this

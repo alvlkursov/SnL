@@ -4,6 +4,7 @@ import android.app.ActivityManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.provider.Settings
 import android.util.Log
 
 /** Fired by AlarmManager at ring time: shows the full-screen ringing alarm. */
@@ -28,9 +29,10 @@ class AlarmReceiver : BroadcastReceiver() {
       intent.getStringExtra("title") ?: "Alarm",
       intent.getStringExtra("body") ?: "",
     )
-    // While the app is open, Android shows full-screen alarms only as a banner:
-    // jump straight to the ring screen instead (allowed because we are in the foreground)
-    if (isAppInForeground()) {
+    // While the phone is in use Android shows full-screen alarms only as a banner. Open the
+    // ring screen directly instead: allowed in the foreground, or anytime with "display over
+    // other apps" (the standard background-start exemption alarm apps rely on)
+    if (isAppInForeground() || Settings.canDrawOverlays(context)) {
       try {
         context.startActivity(AlarmScheduler.launchIntent(context, alarmId, at))
       } catch (e: Exception) {

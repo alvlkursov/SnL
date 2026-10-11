@@ -12,12 +12,13 @@ export interface AlarmClockStatus {
   notifications: boolean;
   exactAlarms: boolean;
   fullScreen: boolean;
+  overlay?: boolean; // missing in builds before 1.0.9
   batteryUnrestricted: boolean;
   isXiaomi: boolean;
 }
 
 export type AlarmClockSettings =
-  | "app" | "notifications" | "exactAlarms" | "fullScreen" | "battery" | "xiaomiAutostart" | "xiaomiPermissions";
+  | "app" | "notifications" | "exactAlarms" | "fullScreen" | "overlay" | "battery" | "xiaomiAutostart" | "xiaomiPermissions";
 
 interface AlarmClockNativeModule {
   setSchedule(entriesJson: string): void;

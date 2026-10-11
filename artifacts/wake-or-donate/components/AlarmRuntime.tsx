@@ -50,7 +50,8 @@ export function AlarmRuntime() {
       if (Platform.OS !== "android") return;
       const seen = await AsyncStorage.getItem(ALARM_SETUP_SEEN_KEY).catch(() => "1");
       const status = AlarmClock?.getStatus();
-      const missing = !status || !status.notifications || !status.exactAlarms || !status.fullScreen;
+      const missing = !status || !status.notifications || !status.exactAlarms || !status.fullScreen
+        || status.overlay === false;
       if ((!seen || missing) && ringingAlarm.id === null) router.push("/alarm-setup");
     })();
   }, [token]);
