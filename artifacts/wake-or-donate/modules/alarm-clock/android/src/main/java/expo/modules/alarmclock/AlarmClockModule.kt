@@ -45,6 +45,11 @@ class AlarmClockModule : Module() {
       array.toString()
     }
 
+    // Last fires on this phone as JSON: [{ time, key, alarmId, outcome }]
+    Function("getFireLog") {
+      AlarmScheduler.fireLog(context)
+    }
+
     Function("getStatus") {
       val notifications = (context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
         .areNotificationsEnabled()

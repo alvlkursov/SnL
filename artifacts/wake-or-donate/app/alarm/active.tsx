@@ -12,6 +12,7 @@ import { useAlarms } from "@/context/AlarmContext";
 import { stopRinging, scheduleSnooze, nativeAlarmsAvailable } from "@/lib/alarmNotifications";
 import { AlarmClock } from "@/modules/alarm-clock";
 import { ringingAlarm } from "@/lib/ringingState";
+import { closeScreen } from "@/lib/navigation";
 
 function MathChallenge({ onSolve }: { onSolve: () => void }) {
   const [a] = useState(Math.floor(Math.random() * 20) + 5);
@@ -65,6 +66,8 @@ const SHAKE_THRESHOLD_G = 1.8;
 const SHAKE_DEBOUNCE_MS = 250;
 // After tapping "Wake up" the user has this long to prove it, otherwise the alarm snoozes
 const CHALLENGE_SECONDS = 30;
+// A ring link older than the ring window is stale
+const STALE_RING_MS = 15 * 60_000;
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
@@ -98,8 +101,17 @@ export default function ActiveAlarmScreen() {
   const canSnooze = !!alarm?.snoozeEnabled && !snoozeBlocked;
   const alarmInfo = { id: alarmId, label: alarm?.label ?? "Alarm", donationAmount: alarm?.donationAmount ?? 0 };
 
+  // A ring screen opened from an old link (Android replaying the launch intent after the app
+  // was killed, or reopened from recents) must not ring again
+  const isTest = test === "1";
+  const staleLink = !isTest && !!ringAt && Date.now() - ringAt > STALE_RING_MS;
+
   // Ring: loud looping sound (even in silent mode) + vibration + pulsing clock
   useEffect(() => {
+    if (staleLink) {
+      closeScreen();
+      return;
+    }
     ringingAlarm.id = alarmId;
     const loadTimer = setTimeout(() => setWaitedForAlarm(true), 6000);
     if (playInApp) {
@@ -112,7 +124,8 @@ export default function ActiveAlarmScreen() {
         });
     }
     const timer = setInterval(() => setTime(new Date()), 1000);
-    Vibration.vibrate([500, 500, 500, 500], true);
+    // Native rings already vibrate through their notification channel
+    if (playInApp) Vibration.vibrate([500, 500, 500, 500], true);
     const pulse = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.08, duration: 600, useNativeDriver: true }),
@@ -133,6 +146,16 @@ export default function ActiveAlarmScreen() {
     Vibration.cancel();
     try { player.pause(); } catch {}
   };
+
+  // The alarm was switched off (or deleted) since it fired: stop and leave
+  useEffect(() => {
+    if (isTest || !alarmId) return;
+    const switchedOff = alarm ? !alarm.isEnabled : waitedForAlarm && alarms.length > 0;
+    if (!switchedOff) return;
+    silence();
+    AlarmClock?.cancelRing(alarmId);
+    closeScreen();
+  }, [alarm?.isEnabled, waitedForAlarm, alarms.length]);
 
   const handleDismiss = async () => {
     if (busy) return;
@@ -250,6 +273,8 @@ export default function ActiveAlarmScreen() {
 
   const timeStr = time.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
   const amount = alarm?.donationAmount ?? 0;
+
+  if (staleLink) return null;
 
   if (phase === "challenge") {
     return (

@@ -6,7 +6,7 @@ import { useFocusEffect } from "expo-router";
 import Constants from "expo-constants";
 import { BASE_URL, deviceTimezone, useAuth } from "@/context/AuthContext";
 import { AlarmClock } from "@/modules/alarm-clock";
-import { scheduledRings, type ScheduledRing } from "@/lib/alarmNotifications";
+import { scheduledRings, recentFires, type ScheduledRing, type RingFire } from "@/lib/alarmNotifications";
 import { closeScreen } from "@/lib/navigation";
 
 interface ServerDiagnostics {
@@ -23,11 +23,13 @@ export default function DiagnosticsScreen() {
   const insets = useSafeAreaInsets();
   const { token } = useAuth();
   const [rings, setRings] = useState<ScheduledRing[]>([]);
+  const [fires, setFires] = useState<RingFire[]>([]);
   const [server, setServer] = useState<ServerDiagnostics | null>(null);
   const [error, setError] = useState("");
 
   const load = useCallback(() => {
     setRings(scheduledRings());
+    setFires(recentFires());
     if (!token) return;
     fetch(`${BASE_URL}/alarms/diagnostics`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => (r.ok ? r.json() : Promise.reject(new Error(`Server: ${r.status}`))))
@@ -67,6 +69,18 @@ export default function DiagnosticsScreen() {
       <View style={styles.card}>
         {rings.length === 0 ? <Text style={styles.empty}>Nothing scheduled</Text> : rings.slice(0, 15).map(r => (
           <Row key={`${r.alarmId}-${r.at}`} label={r.title.replace(/^⏰\s*/, "")} value={when(new Date(r.at))} />
+        ))}
+      </View>
+
+      <Text style={styles.section}>Recent fires on this phone</Text>
+      <View style={styles.card}>
+        {fires.length === 0 ? <Text style={styles.empty}>No fires recorded yet</Text> : fires.slice(0, 10).map(f => (
+          <Row
+            key={`${f.time}-${f.key}`}
+            label={`#${f.alarmId} · ${when(new Date(f.time))} · ${f.key.includes(":snooze:") ? "snooze" : "ring"}`}
+            value={f.outcome}
+            bad={f.outcome !== "rang"}
+          />
         ))}
       </View>
 

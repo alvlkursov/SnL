@@ -47,7 +47,15 @@ class AlarmLockScreenListener : ReactActivityLifecycleListener {
   override fun onCreate(activity: Activity?, savedInstanceState: Bundle?) {
     if (activity == null) return
     AlarmLockScreen.track(activity)
-    AlarmLockScreen.applyFor(activity.intent)
+    val intent = activity.intent
+    val launchedFromHistory = (intent?.flags ?: 0) and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+    if (launchedFromHistory || savedInstanceState != null) {
+      // Reopened from recents / recreated after being killed: Android replays the original
+      // launch intent, which may be an old alarm link. Don't re-open the ring screen for it.
+      if (intent?.data?.host == "alarm") activity.intent = Intent(intent).setData(null)
+      return
+    }
+    AlarmLockScreen.applyFor(intent)
   }
 
   override fun onResume(activity: Activity?) {

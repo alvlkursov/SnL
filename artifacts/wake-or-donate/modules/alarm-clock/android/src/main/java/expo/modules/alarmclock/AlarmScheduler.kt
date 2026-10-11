@@ -41,6 +41,8 @@ object AlarmScheduler {
   private const val TAG = "AlarmClock"
   private const val PREFS = "wake_or_donate_alarm_clock"
   private const val KEY_ENTRIES = "entries"
+  private const val KEY_LOG = "fire_log"
+  private const val LOG_SIZE = 20
   const val ACTION_FIRE = "expo.modules.alarmclock.FIRE"
   const val DEEP_LINK_SCHEME = "wake-or-donate"
 
@@ -106,6 +108,7 @@ object AlarmScheduler {
       .setData(Uri.parse("$DEEP_LINK_SCHEME://fire/${Uri.encode(entry.key)}"))
       .putExtra("alarmId", entry.alarmId)
       .putExtra("at", entry.at)
+      .putExtra("key", entry.key)
       .putExtra("title", entry.title)
       .putExtra("body", entry.body)
     return PendingIntent.getBroadcast(
@@ -113,6 +116,22 @@ object AlarmScheduler {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
     )
   }
+
+  /** Whether [key] is still part of the current schedule (a cancelled ring must never sound). */
+  fun isScheduled(context: Context, key: String): Boolean = load(context).any { it.key == key }
+
+  /** Keeps the last few fires (and ignored stale ones) for the diagnostics screen. */
+  fun logFire(context: Context, key: String, alarmId: Int, outcome: String) {
+    val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val log = try { JSONArray(prefs.getString(KEY_LOG, "[]")) } catch (e: Exception) { JSONArray() }
+    log.put(JSONObject().put("time", System.currentTimeMillis()).put("key", key).put("alarmId", alarmId).put("outcome", outcome))
+    val trimmed = JSONArray()
+    for (i in maxOf(0, log.length() - LOG_SIZE) until log.length()) trimmed.put(log.get(i))
+    prefs.edit().putString(KEY_LOG, trimmed.toString()).apply()
+  }
+
+  fun fireLog(context: Context): String =
+    context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_LOG, "[]") ?: "[]"
 
   /** Upcoming scheduled rings, for the diagnostics screen. */
   fun upcoming(context: Context): List<AlarmEntry> {

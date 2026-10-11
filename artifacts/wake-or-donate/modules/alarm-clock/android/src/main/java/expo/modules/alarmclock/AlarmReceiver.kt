@@ -13,6 +13,14 @@ class AlarmReceiver : BroadcastReceiver() {
     val alarmId = intent.getIntExtra("alarmId", 0)
     if (alarmId == 0) return
     val at = intent.getLongExtra("at", 0L)
+    val key = intent.getStringExtra("key") ?: ""
+    // Defense in depth: only ring for occurrences that are still scheduled. Anything else
+    // (a ring cancelled by switching the alarm off, a stale PendingIntent) stays silent.
+    if (key.isNotEmpty() && !AlarmScheduler.isScheduled(context, key)) {
+      AlarmScheduler.logFire(context, key, alarmId, "ignored: no longer scheduled")
+      return
+    }
+    AlarmScheduler.logFire(context, key, alarmId, "rang")
     RingNotification.show(
       context,
       alarmId,

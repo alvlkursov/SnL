@@ -303,3 +303,20 @@ export function scheduledRings(): ScheduledRing[] {
     return [];
   }
 }
+
+export interface RingFire {
+  time: number;
+  key: string;
+  alarmId: number;
+  outcome: string;
+}
+
+/** Recent alarm fires on this phone, newest first (diagnostics). */
+export function recentFires(): RingFire[] {
+  if (!useNativeAlarms) return [];
+  try {
+    return (JSON.parse(AlarmClock!.getFireLog()) as RingFire[]).reverse();
+  } catch {
+    return [];
+  }
+}
