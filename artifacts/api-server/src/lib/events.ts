@@ -117,20 +117,30 @@ export async function currentStreak(userId: number): Promise<number> {
 
 const TICK_MS = 30 * 1000;
 
+let inFlight: Promise<void> | null = null;
+
+/**
+ * Opens due occurrences and charges overdue misses. Safe to call from requests too:
+ * concurrent callers share one run. Lets a sleeping (autoscaled) server catch up
+ * the moment the app asks about missed alarms.
+ */
+export function catchUpAlarms(): Promise<void> {
+  if (!inFlight) {
+    inFlight = (async () => {
+      try {
+        await openDueEvents();
+        await chargeMissedEvents();
+      } catch (e) {
+        console.error("alarm catch-up failed", e);
+      } finally {
+        inFlight = null;
+      }
+    })();
+  }
+  return inFlight;
+}
+
 export function startScheduler() {
-  let running = false;
-  const tick = async () => {
-    if (running) return;
-    running = true;
-    try {
-      await openDueEvents();
-      await chargeMissedEvents();
-    } catch (e) {
-      console.error("scheduler tick failed", e);
-    } finally {
-      running = false;
-    }
-  };
-  setInterval(tick, TICK_MS);
-  void tick();
+  setInterval(() => void catchUpAlarms(), TICK_MS);
+  void catchUpAlarms();
 }

@@ -4,7 +4,7 @@ import { alarmsTable, alarmEventsTable, donationsTable, usersTable, type Alarm }
 import { eq, and, desc, lt, sql } from "drizzle-orm";
 import { authMiddleware, getUserId } from "../lib/auth.js";
 import { parseBody, parseId, createAlarmSchema, updateAlarmSchema } from "../lib/validation.js";
-import { findCurrentEvent, currentStreak } from "../lib/events.js";
+import { findCurrentEvent, currentStreak, catchUpAlarms } from "../lib/events.js";
 import { resolveCharity, recordDonation } from "../lib/donations.js";
 import { MAX_SNOOZES, RING_WINDOW_MINUTES, minutes } from "../lib/rules.js";
 
@@ -72,6 +72,7 @@ async function userTimezone(userId: number): Promise<string> {
 
 // Unacknowledged misses, so the app can show the "Alarm missed" screen on next open
 router.get("/events/missed", async (req, res) => {
+  await catchUpAlarms();
   const rows = await db.select({
     id: alarmEventsTable.id,
     alarmId: alarmEventsTable.alarmId,
