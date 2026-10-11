@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 
 export default function SnoozeChargeScreen() {
   const insets = useSafeAreaInsets();
@@ -87,7 +88,7 @@ export default function SnoozeChargeScreen() {
       {/* Action */}
       <TouchableOpacity
         style={styles.okBtn}
-        onPress={() => router.back()}
+        onPress={closeScreen}
         activeOpacity={0.8}
       >
         <Text style={styles.okBtnText}>Okay</Text>

@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 
 function ListRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
@@ -49,7 +50,7 @@ export default function DonationReceiptScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={closeScreen} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Feather name="x" size={22} color="#8888AA" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Receipt</Text>
@@ -107,7 +108,7 @@ export default function DonationReceiptScreen() {
       {/* Done */}
       <TouchableOpacity
         style={styles.doneBtn}
-        onPress={() => router.back()}
+        onPress={closeScreen}
         activeOpacity={0.8}
       >
         <Text style={styles.doneBtnText}>Done</Text>

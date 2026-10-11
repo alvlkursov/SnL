@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 
 export default function WokeUpScreen() {
@@ -106,7 +107,7 @@ export default function WokeUpScreen() {
       {/* Done */}
       <TouchableOpacity
         style={styles.doneBtn}
-        onPress={() => router.back()}
+        onPress={closeScreen}
         activeOpacity={0.8}
       >
         <Text style={styles.doneBtnText}>Close</Text>

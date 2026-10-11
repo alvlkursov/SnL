@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-nati
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MaterialCommunityIcons, Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 import { useAlarms, type Alarm, type MissedEvent } from "@/context/AlarmContext";
 
 const CATEGORY_LABELS: Record<string, string> = { favorite: "Favorite", recommended: "Recommended", hated: "Hated" };
@@ -80,7 +81,7 @@ export default function MissedAlarmScreen() {
   const total = missed.reduce((sum, m) => sum + (m.amount ?? 0), 0);
   const single = missed.length === 1 ? missed[0] : null;
 
-  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)"));
+  const close = closeScreen;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 24 }]}>

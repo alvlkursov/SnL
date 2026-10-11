@@ -6,6 +6,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
 
@@ -97,7 +98,7 @@ export default function CreateAlarmScreen() {
         snoozeEnabled,
         snoozeDurationMinutes: parseInt(snoozeDuration) || 5,
       });
-      router.back();
+      closeScreen();
     } catch (e: any) {
       Alert.alert("Error", e.message ?? "Failed to create alarm");
     } finally {
@@ -112,7 +113,7 @@ export default function CreateAlarmScreen() {
     <View style={[styles.container, { paddingTop: topPad }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+        <TouchableOpacity onPress={closeScreen} style={styles.closeBtn}>
           <Feather name="x" size={22} color="#F0F0FF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Alarm</Text>

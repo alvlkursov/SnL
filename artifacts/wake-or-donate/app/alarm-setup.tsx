@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, AppState, Platfor
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { AlarmClock, type AlarmClockSettings, type AlarmClockStatus } from "@/modules/alarm-clock";
@@ -86,7 +87,7 @@ export default function AlarmSetupScreen() {
     AlarmClock?.openSettings(step.settings);
   };
 
-  const close = () => (router.canGoBack() ? router.back() : router.replace("/(tabs)"));
+  const close = closeScreen;
 
   return (
     <ScrollView
