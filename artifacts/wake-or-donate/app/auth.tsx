@@ -118,6 +118,15 @@ export default function AuthScreen() {
               </TouchableOpacity>
             </View>
 
+            {mode === "login" && (
+              <TouchableOpacity
+                style={styles.forgotLink}
+                onPress={() => router.push({ pathname: "/forgot-password", params: { email: email.trim() } })}
+              >
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+            )}
+
             {error ? (
               <View style={styles.errorBox}>
                 <Feather name="alert-circle" size={14} color="#FF453A" />
@@ -192,6 +201,8 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 10 },
   input: { flex: 1, height: 52, color: "#F0F0FF", fontFamily: "Inter_400Regular", fontSize: 15 },
   eyeIcon: { padding: 8 },
+  forgotLink: { alignSelf: "flex-end", paddingVertical: 2 },
+  forgotText: { color: "#FF5A3C", fontSize: 14, fontFamily: "Inter_500Medium" },
   errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#2A1215", borderRadius: 8, padding: 12 },
   errorText: { color: "#FF453A", fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
   submitBtn: {

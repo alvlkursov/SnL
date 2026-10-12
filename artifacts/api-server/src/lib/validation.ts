@@ -91,3 +91,13 @@ export function parseId(raw: string, res: Response): number | null {
   }
   return id;
 }
+
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+});
+
+export const resetPasswordSchema = z.object({
+  email: z.string().trim().toLowerCase().email(),
+  code: z.string().trim().regex(/^\d{6}$/, "Enter the 6-digit code from the email"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});

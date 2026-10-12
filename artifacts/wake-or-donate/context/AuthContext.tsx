@@ -54,6 +54,8 @@ interface AuthContextType {
   logout: () => Promise<void>;
   deleteAccount: (password: string) => Promise<void>;
   refreshUser: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (email: string, code: string, password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -171,6 +173,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearAuth();
   }
 
+  // Emails a 6-digit code (the server answers the same whether or not the account exists)
+  async function requestPasswordReset(email: string) {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message ?? "Could not send the code");
+    }
+  }
+
+  // Sets the new password and signs in; other devices are signed out
+  async function resetPassword(email: string, code: string, password: string) {
+    const res = await fetch(`${BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, code, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message ?? "Could not reset the password");
+    }
+    const { user: userData, token: newToken } = await res.json();
+    reportTimezone(newToken);
+    setUser(userData);
+    setToken(newToken);
+    await AsyncStorage.setItem("auth_token", newToken);
+    await AsyncStorage.setItem("auth_user", JSON.stringify(userData));
+  }
+
   async function refreshUser() {
     if (!token) return;
     try {
@@ -186,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, deleteAccount, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, deleteAccount, refreshUser, requestPasswordReset, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );
