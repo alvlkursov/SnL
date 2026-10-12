@@ -27,6 +27,7 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="welcome" options={{ presentation: "fullScreenModal", headerShown: false, gestureEnabled: false }} />
       <Stack.Screen name="forgot-password" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm/[id]" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm/create" options={{ presentation: "modal", headerShown: false }} />

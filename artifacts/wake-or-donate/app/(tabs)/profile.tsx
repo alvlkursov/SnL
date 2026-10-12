@@ -144,6 +144,8 @@ export default function ProfileScreen() {
         <Divider />
         {user ? (
           <>
+            <Row icon="help-circle" label="How it works" onPress={() => router.push("/welcome")} />
+            <Divider />
             {Platform.OS === "android" && (
               <>
                 <Row

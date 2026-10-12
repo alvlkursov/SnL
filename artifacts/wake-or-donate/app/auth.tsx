@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
@@ -6,7 +6,9 @@ import {
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/context/AuthContext";
+import { WELCOME_SEEN_KEY } from "@/lib/onboarding";
 
 export default function AuthScreen() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -18,6 +20,13 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const { login, register } = useAuth();
   const insets = useSafeAreaInsets();
+
+  // First launch: explain the idea before asking for an account
+  useEffect(() => {
+    AsyncStorage.getItem(WELCOME_SEEN_KEY)
+      .then(seen => { if (!seen) router.push("/welcome"); })
+      .catch(() => {});
+  }, []);
 
   const handleSubmit = async () => {
     setError("");
