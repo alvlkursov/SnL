@@ -20,7 +20,13 @@ export interface AlarmClockStatus {
 export type AlarmClockSettings =
   | "app" | "notifications" | "exactAlarms" | "fullScreen" | "overlay" | "battery" | "xiaomiAutostart" | "xiaomiPermissions";
 
+export interface AlarmClockRingEvent {
+  alarmId: number;
+  at: number; // scheduled ring time, epoch ms
+}
+
 interface AlarmClockNativeModule {
+  addListener(event: "onRing", listener: (event: AlarmClockRingEvent) => void): { remove(): void };
   setSchedule(entriesJson: string): void;
   getSchedule(): string;
   getFireLog(): string;

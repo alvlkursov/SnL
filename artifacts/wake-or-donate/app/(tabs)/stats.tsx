@@ -137,7 +137,7 @@ export default function StatsScreen() {
       </View>
       <Text style={styles.note}>
         {stats?.alarmsTriggered ?? 0} real alarm{(stats?.alarmsTriggered ?? 0) === 1 ? "" : "s"} counted
-        {" · "}{stats?.onTimeCount ?? 0} on time without snoozing. Test alarms aren't counted.
+        {" · "}{stats?.onTimeCount ?? 0} on time without snoozing.
       </Text>
 
       {/* Donation total */}

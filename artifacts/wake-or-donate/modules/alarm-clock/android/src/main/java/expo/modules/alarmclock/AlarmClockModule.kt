@@ -12,6 +12,7 @@ import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONArray
+import java.lang.ref.WeakReference
 
 class AlarmClockModule : Module() {
   private val context: Context
@@ -19,6 +20,12 @@ class AlarmClockModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("AlarmClock")
+
+    // An alarm just fired while the app's JS is running: lets the app open the ring screen itself
+    Events("onRing")
+
+    OnCreate { current = WeakReference(this@AlarmClockModule) }
+    OnDestroy { if (current?.get() === this@AlarmClockModule) current = null }
 
     // entriesJson: [{ key, alarmId, at, title, body }]
     Function("setSchedule") { entriesJson: String ->
@@ -95,6 +102,21 @@ class AlarmClockModule : Module() {
       // Fall back to the app's system settings page if the specific screen doesn't exist
       val appDetails = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$pkg"))
       openFirst(candidates + appDetails)
+    }
+  }
+
+  companion object {
+    private var current: WeakReference<AlarmClockModule>? = null
+
+    /** Tells the running app an alarm fired. False when no JS is running to receive it. */
+    fun emitRing(alarmId: Int, at: Long): Boolean {
+      val module = current?.get() ?: return false
+      return try {
+        module.sendEvent("onRing", mapOf("alarmId" to alarmId, "at" to at.toDouble()))
+        true
+      } catch (_: Exception) {
+        false
+      }
     }
   }
 

@@ -29,9 +29,12 @@ class AlarmReceiver : BroadcastReceiver() {
       intent.getStringExtra("title") ?: "Alarm",
       intent.getStringExtra("body") ?: "",
     )
-    // While the phone is in use Android shows full-screen alarms only as a banner. Open the
-    // ring screen directly instead: allowed in the foreground, or anytime with "display over
-    // other apps" (the standard background-start exemption alarm apps rely on)
+    // While the phone is in use Android shows full-screen alarms only as a banner.
+    // App open on screen: it switches to the ring screen itself (MIUI may block an activity
+    // start from here even in the foreground)
+    if (isAppInForeground() && AlarmClockModule.emitRing(alarmId, at)) return
+    // Otherwise open the ring screen directly: allowed in the foreground, or anytime with
+    // "display over other apps" (the standard background-start exemption alarm apps rely on)
     if (isAppInForeground() || Settings.canDrawOverlays(context)) {
       try {
         context.startActivity(AlarmScheduler.launchIntent(context, alarmId, at))

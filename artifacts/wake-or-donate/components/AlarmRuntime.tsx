@@ -7,14 +7,15 @@ import { useAlarms } from "@/context/AlarmContext";
 import { isAlarmData, setupAlarmNotifications, ALARM_SETUP_SEEN_KEY } from "@/lib/alarmNotifications";
 import { ringingAlarm } from "@/lib/ringingState";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AlarmClock } from "@/modules/alarm-clock";
 
 // Ignore taps on notifications older than this (e.g. a stale one restored after restart)
 const MAX_RESPONSE_AGE_MS = 30 * 60_000;
 
-function openRingScreen(alarmId: number) {
+function openRingScreen(alarmId: number, at?: number) {
   if (ringingAlarm.id === alarmId) return;
   ringingAlarm.id = alarmId;
-  router.push({ pathname: "/alarm/active", params: { id: alarmId } });
+  router.push({ pathname: "/alarm/active", params: at ? { id: alarmId, at } : { id: alarmId } });
 }
 
 /** Opens the ring screen when the user taps an alarm notification (also on cold start). Native only. */
@@ -59,6 +60,13 @@ export function AlarmRuntime() {
       const data = notification.request.content.data;
       if (isAlarmData(data)) openRingScreen(data.alarmId);
     });
+    return () => sub.remove();
+  }, [user]);
+
+  // Native alarm clock fired while the app is on screen: switch to the ring screen right away
+  useEffect(() => {
+    if (!AlarmClock || !user) return;
+    const sub = AlarmClock.addListener("onRing", ({ alarmId, at }) => openRingScreen(alarmId, at));
     return () => sub.remove();
   }, [user]);
 
