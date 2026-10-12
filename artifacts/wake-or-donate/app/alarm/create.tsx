@@ -8,6 +8,8 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
+import { WakeCodeRow } from "@/components/WakeCodeRow";
+import { getWakeCode } from "@/lib/wakeCode";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -42,6 +44,13 @@ export default function CreateAlarmScreen() {
   const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated">("recommended");
   const [selectedCharityId, setSelectedCharityId] = useState<number | null>(null);
   const [confirmMethod, setConfirmMethod] = useState<"button" | "math" | "shake" | "qr">("button");
+  // QR alarms need a code to scan: ask for one right away if none is saved yet
+  const pickConfirmMethod = (method: typeof confirmMethod) => {
+    setConfirmMethod(method);
+    if (method === "qr" && Platform.OS !== "web") {
+      getWakeCode().then(code => { if (!code) router.push("/wake-code"); });
+    }
+  };
   const [snoozeEnabled, setSnoozeEnabled] = useState(true);
   const [snoozeDuration, setSnoozeDuration] = useState("5");
 
@@ -275,7 +284,7 @@ export default function CreateAlarmScreen() {
               <TouchableOpacity
                 key={m.key}
                 style={[styles.confirmBtn, confirmMethod === m.key && styles.confirmBtnActive]}
-                onPress={() => setConfirmMethod(m.key as any)}
+                onPress={() => pickConfirmMethod(m.key as any)}
               >
                 <MaterialCommunityIcons
                   name={m.icon as any}
@@ -287,6 +296,7 @@ export default function CreateAlarmScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {confirmMethod === "qr" && <WakeCodeRow />}
         </View>
 
         {/* Snooze */}

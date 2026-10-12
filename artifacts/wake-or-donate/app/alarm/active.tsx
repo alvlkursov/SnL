@@ -13,6 +13,8 @@ import { stopRinging, scheduleSnooze, nativeAlarmsAvailable } from "@/lib/alarmN
 import { AlarmClock } from "@/modules/alarm-clock";
 import { ringingAlarm } from "@/lib/ringingState";
 import { closeScreen } from "@/lib/navigation";
+import { CodeScanner } from "@/components/CodeScanner";
+import { getWakeCode } from "@/lib/wakeCode";
 
 function MathChallenge({ onSolve }: { onSolve: () => void }) {
   const [a] = useState(Math.floor(Math.random() * 20) + 5);
@@ -66,6 +68,8 @@ const SHAKE_THRESHOLD_G = 1.8;
 const SHAKE_DEBOUNCE_MS = 250;
 // After tapping "Wake up" the user has this long to prove it, otherwise the alarm snoozes
 const CHALLENGE_SECONDS = 30;
+// Walking to the wake-up code takes longer than solving a sum
+const QR_CHALLENGE_SECONDS = 180;
 // A ring link older than the ring window is stale
 const STALE_RING_MS = 15 * 60_000;
 const IN_APP_RING_MS = 10 * 60_000;
@@ -100,6 +104,10 @@ export default function ActiveAlarmScreen() {
   const playInApp = !nativeAlarmsAvailable || test === "1" || sound === "app";
 
   const confirmMethod = alarm?.confirmationMethod ?? "button";
+  const challengeSeconds = confirmMethod === "qr" ? QR_CHALLENGE_SECONDS : CHALLENGE_SECONDS;
+  const [wakeCode, setWakeCode] = useState<string | null>(null);
+  const [wrongCode, setWrongCode] = useState(false);
+  useEffect(() => { getWakeCode().then(setWakeCode); }, []);
   const canSnooze = !!alarm?.snoozeEnabled && !snoozeBlocked;
   const alarmInfo = { id: alarmId, label: alarm?.label ?? "Alarm", donationAmount: alarm?.donationAmount ?? 0 };
 
@@ -238,16 +246,17 @@ export default function ActiveAlarmScreen() {
       handlers.current.handleDismiss();
       return;
     }
-    setSecondsLeft(CHALLENGE_SECONDS);
+    setSecondsLeft(challengeSeconds);
     setShakeCount(0);
+    setWrongCode(false);
     setChallengeKey(k => k + 1); // fresh math problem every attempt
     setPhase("challenge");
   };
 
-  // 30-second countdown: failing to prove you're awake snoozes (and donates)
+  // Countdown (30 s, 3 min for QR): failing to prove you're awake snoozes (and donates)
   useEffect(() => {
     if (phase !== "challenge") return;
-    const deadline = Date.now() + CHALLENGE_SECONDS * 1000;
+    const deadline = Date.now() + challengeSeconds * 1000;
     const timer = setInterval(() => {
       const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       setSecondsLeft(left);
@@ -292,7 +301,7 @@ export default function ActiveAlarmScreen() {
           <Text style={styles.challengeTitle}>Prove you're awake</Text>
           <View style={[styles.countdownPill, secondsLeft <= 10 && styles.countdownPillUrgent]}>
             <Feather name="clock" size={14} color={secondsLeft <= 10 ? "#FF453A" : "#FF9F0A"} />
-            <Text style={[styles.countdownText, secondsLeft <= 10 && { color: "#FF453A" }]}>{secondsLeft}s</Text>
+            <Text style={[styles.countdownText, secondsLeft <= 10 && { color: "#FF453A" }]}>{secondsLeft >= 60 ? `${Math.floor(secondsLeft / 60)}:${String(secondsLeft % 60).padStart(2, "0")}` : `${secondsLeft}s`}</Text>
           </View>
           <Text style={styles.challengeHint}>
             {canSnooze ? `Not done in time = automatic snooze and $${amount} donation` : "No snoozes left — the alarm keeps ringing"}
@@ -314,11 +323,16 @@ export default function ActiveAlarmScreen() {
         )}
         {!busy && confirmMethod === "qr" && (
           <View style={styles.challengeBody}>
-            <MaterialCommunityIcons name="qrcode-scan" size={64} color="#FF5A3C" />
-            <Text style={styles.challengeBodyTitle}>Get out of bed to scan your QR code</Text>
-            <TouchableOpacity onPress={() => handlers.current.handleDismiss()}>
-              <Text style={styles.qrFallbackText}>QR scanning isn't set up yet — tap to confirm</Text>
-            </TouchableOpacity>
+            <Text style={styles.challengeBodyTitle}>Get up and scan your wake-up code</Text>
+            <CodeScanner
+              style={styles.qrScanner}
+              onScan={data => {
+                // No code saved yet: any code proves you got up
+                if (!wakeCode || data === wakeCode) handlers.current.handleDismiss();
+                else setWrongCode(true);
+              }}
+            />
+            {wrongCode && <Text style={styles.qrWrongText}>That's not your wake-up code — try again</Text>}
           </View>
         )}
 
@@ -370,7 +384,7 @@ export default function ActiveAlarmScreen() {
             {busy ? <ActivityIndicator color="#0A0A0F" /> : <Feather name="sun" size={30} color="#0A0A0F" />}
             <Text style={[styles.bigBtnText, { color: "#0A0A0F" }]}>WAKE UP</Text>
             <Text style={[styles.bigBtnSub, { color: "#0A0A0FAA" }]}>
-              {confirmMethod === "button" ? "I'm up" : `${CHALLENGE_SECONDS}s to prove it`}
+              {confirmMethod === "button" ? "I'm up" : challengeSeconds >= 60 ? `${challengeSeconds / 60} min to prove it` : `${challengeSeconds}s to prove it`}
             </Text>
           </TouchableOpacity>
         </View>
@@ -412,7 +426,8 @@ const styles = StyleSheet.create({
   shakeProgress: { flexDirection: "row", gap: 6 },
   shakeDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: "#2A2A40" },
   shakeDotActive: { backgroundColor: "#FF5A3C" },
-  qrFallbackText: { fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular", textDecorationLine: "underline" },
+  qrScanner: { maxHeight: 280 },
+  qrWrongText: { fontSize: 14, color: "#FF453A", fontFamily: "Inter_500Medium", marginTop: 12, textAlign: "center" },
   backLink: { paddingVertical: 10, paddingHorizontal: 24 },
   backLinkText: { fontSize: 15, fontFamily: "Inter_500Medium", color: "#8888AA" },
 });

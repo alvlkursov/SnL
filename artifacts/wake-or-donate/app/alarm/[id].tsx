@@ -8,6 +8,8 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
+import { WakeCodeRow } from "@/components/WakeCodeRow";
+import { getWakeCode } from "@/lib/wakeCode";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -43,6 +45,13 @@ export default function AlarmDetailScreen() {
   const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated">(alarm?.charityCategory ?? "recommended");
   const [selectedCharityId, setSelectedCharityId] = useState<number | null>(alarm?.charityId ?? null);
   const [confirmMethod, setConfirmMethod] = useState<"button" | "math" | "shake" | "qr">(alarm?.confirmationMethod ?? "button");
+  // QR alarms need a code to scan: ask for one right away if none is saved yet
+  const pickConfirmMethod = (method: typeof confirmMethod) => {
+    setConfirmMethod(method);
+    if (method === "qr" && Platform.OS !== "web") {
+      getWakeCode().then(code => { if (!code) router.push("/wake-code"); });
+    }
+  };
   const [snoozeEnabled, setSnoozeEnabled] = useState(alarm?.snoozeEnabled ?? true);
   const [snoozeDuration, setSnoozeDuration] = useState(String(alarm?.snoozeDurationMinutes ?? 5));
 
@@ -231,13 +240,14 @@ export default function AlarmDetailScreen() {
               <TouchableOpacity
                 key={m.key}
                 style={[styles.confirmBtn, confirmMethod === m.key && styles.confirmBtnActive]}
-                onPress={() => setConfirmMethod(m.key as any)}
+                onPress={() => pickConfirmMethod(m.key as any)}
               >
                 <MaterialCommunityIcons name={m.icon as any} size={20} color={confirmMethod === m.key ? "#FF5A3C" : "#8888AA"} />
                 <Text style={[styles.confirmBtnText, confirmMethod === m.key && { color: "#FF5A3C" }]}>{m.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
+          {confirmMethod === "qr" && <WakeCodeRow />}
         </View>
 
         <View style={styles.section}>

@@ -2,7 +2,7 @@
   "expo": {
     "name": "WakeOrDonate",
     "slug": "wake-or-donate",
-    "version": "1.0.13",
+    "version": "1.0.14",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "wake-or-donate",
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.wakeordonate.app",
-      "versionCode": 14,
+      "versionCode": 15,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0A0A0F"
@@ -31,7 +31,8 @@
         "android.permission.VIBRATE",
         "android.permission.WAKE_LOCK",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.SYSTEM_ALERT_WINDOW"
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.CAMERA"
       ],
       "blockedPermissions": [
         "android.permission.RECORD_AUDIO",
@@ -58,6 +59,13 @@
             "./assets/sounds/alarm.wav"
           ],
           "color": "#FF5A3C"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Scan your wake-up code to prove you're out of bed.",
+          "recordAudioAndroid": false
         }
       ],
       [
