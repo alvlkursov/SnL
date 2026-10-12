@@ -11,8 +11,8 @@ import { useAlarms } from "@/context/AlarmContext";
 export default function WokeUpScreen() {
   const insets = useSafeAreaInsets();
   const { donateVoluntarily } = useAlarms();
-  const { alarmName = "Morning Alarm", streak = "0", test = "false" } =
-    useLocalSearchParams<{ alarmName?: string; streak?: string; test?: string }>();
+  const { alarmName = "Morning Alarm", streak = "0" } =
+    useLocalSearchParams<{ alarmName?: string; streak?: string }>();
 
   const scaleAnim = useRef(new Animated.Value(0.7)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -74,11 +74,6 @@ export default function WokeUpScreen() {
         <Feather name="check-circle" size={16} color="#30D158" />
         <Text style={styles.badgeText}>No donation charged</Text>
       </View>
-      {test === "true" && (
-        <Text style={styles.testNote}>
-          Test ring — not counted in stats. Only an alarm that was set before its ring time counts.
-        </Text>
-      )}
 
       {/* Streak */}
       {parseInt(streak, 10) > 1 && (
@@ -122,10 +117,6 @@ export default function WokeUpScreen() {
 }
 
 const styles = StyleSheet.create({
-  testNote: {
-    fontSize: 13, fontFamily: "Inter_400Regular", color: "#8888AA",
-    textAlign: "center", marginTop: -8, marginBottom: 16, lineHeight: 18,
-  },
   container: {
     flex: 1, backgroundColor: "#0A0A0F",
     paddingHorizontal: 24, alignItems: "center",
