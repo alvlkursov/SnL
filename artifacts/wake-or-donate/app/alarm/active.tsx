@@ -68,13 +68,14 @@ const SHAKE_DEBOUNCE_MS = 250;
 const CHALLENGE_SECONDS = 30;
 // A ring link older than the ring window is stale
 const STALE_RING_MS = 15 * 60_000;
+const IN_APP_RING_MS = 10 * 60_000;
 
 function formatTime(date: Date) {
   return date.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
 }
 
 export default function ActiveAlarmScreen() {
-  const { id, test, at } = useLocalSearchParams<{ id: string; test?: string; at?: string }>();
+  const { id, test, at, sound } = useLocalSearchParams<{ id: string; test?: string; at?: string; sound?: string }>();
   const alarmId = parseInt(id ?? "0", 10);
   const ringAt = at ? Number(at) : undefined; // scheduled ring time, passed by the native alarm
   const { alarms, dismissAlarm, snoozeAlarm } = useAlarms();
@@ -94,8 +95,9 @@ export default function ActiveAlarmScreen() {
   // wait briefly so the right confirmation method (math, shake…) is used
   const [waitedForAlarm, setWaitedForAlarm] = useState(false);
   const ready = !!alarm || waitedForAlarm;
-  // A real ring is already sounding from the native alarm clock; a test ring is not
-  const playInApp = !nativeAlarmsAvailable || test === "1";
+  // A real ring is already sounding from the native alarm clock; a test ring, or one the app
+  // took over while it was open (sound=app), rings from here
+  const playInApp = !nativeAlarmsAvailable || test === "1" || sound === "app";
 
   const confirmMethod = alarm?.confirmationMethod ?? "button";
   const canSnooze = !!alarm?.snoozeEnabled && !snoozeBlocked;
@@ -123,6 +125,13 @@ export default function ActiveAlarmScreen() {
           player.play();
         });
     }
+    // Give up ringing after the same window as a native ring
+    const ringTimeout = playInApp && !isTest
+      ? setTimeout(() => {
+          Vibration.cancel();
+          try { player.pause(); } catch {}
+        }, IN_APP_RING_MS)
+      : undefined;
     const timer = setInterval(() => setTime(new Date()), 1000);
     // Native rings already vibrate through their notification channel
     if (playInApp) Vibration.vibrate([500, 500, 500, 500], true);
@@ -135,6 +144,7 @@ export default function ActiveAlarmScreen() {
     pulse.start();
     return () => {
       clearTimeout(loadTimer);
+      clearTimeout(ringTimeout);
       clearInterval(timer);
       Vibration.cancel();
       pulse.stop();

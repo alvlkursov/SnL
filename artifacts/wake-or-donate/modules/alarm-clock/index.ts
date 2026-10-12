@@ -31,6 +31,7 @@ interface AlarmClockNativeModule {
   getSchedule(): string;
   getFireLog(): string;
   stopRinging(alarmId: number): void;
+  ackRing?(alarmId: number): void; // missing in builds before 1.0.12
   cancelRing(alarmId: number): void;
   getStatus(): AlarmClockStatus;
   openSettings(target: AlarmClockSettings): boolean;

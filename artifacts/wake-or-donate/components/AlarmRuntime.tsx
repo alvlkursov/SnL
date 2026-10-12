@@ -12,10 +12,13 @@ import { AlarmClock } from "@/modules/alarm-clock";
 // Ignore taps on notifications older than this (e.g. a stale one restored after restart)
 const MAX_RESPONSE_AGE_MS = 30 * 60_000;
 
-function openRingScreen(alarmId: number, at?: number) {
+function openRingScreen(alarmId: number, at?: number, ringInApp = false) {
   if (ringingAlarm.id === alarmId) return;
   ringingAlarm.id = alarmId;
-  router.push({ pathname: "/alarm/active", params: at ? { id: alarmId, at } : { id: alarmId } });
+  const params: Record<string, string | number> = { id: alarmId };
+  if (at) params.at = at;
+  if (ringInApp) params.sound = "app";
+  router.push({ pathname: "/alarm/active", params });
 }
 
 /** Opens the ring screen when the user taps an alarm notification (also on cold start). Native only. */
@@ -64,9 +67,13 @@ export function AlarmRuntime() {
   }, [user]);
 
   // Native alarm clock fired while the app is on screen: switch to the ring screen right away
+  // and ring from there instead of the tray notification
   useEffect(() => {
     if (!AlarmClock || !user) return;
-    const sub = AlarmClock.addListener("onRing", ({ alarmId, at }) => openRingScreen(alarmId, at));
+    const sub = AlarmClock.addListener("onRing", ({ alarmId, at }) => {
+      AlarmClock?.ackRing?.(alarmId);
+      openRingScreen(alarmId, at, true);
+    });
     return () => sub.remove();
   }, [user]);
 

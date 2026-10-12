@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.provider.Settings
 import expo.modules.kotlin.exception.Exceptions
@@ -21,8 +23,15 @@ class AlarmClockModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("AlarmClock")
 
-    // An alarm just fired while the app's JS is running: lets the app open the ring screen itself
+    // An alarm just fired while the app is on screen: the app opens the ring screen itself
+    // and rings from there, so nothing lands in the notification tray
     Events("onRing")
+
+    // The app took over a ring from onRing; without this the tray notification is shown after all
+    Function("ackRing") { alarmId: Int ->
+      pendingHandoffs.remove(alarmId)
+      Unit
+    }
 
     OnCreate { current = WeakReference(this@AlarmClockModule) }
     OnDestroy { if (current?.get() === this@AlarmClockModule) current = null }
@@ -106,17 +115,29 @@ class AlarmClockModule : Module() {
   }
 
   companion object {
+    private const val HANDOFF_TIMEOUT_MS = 4000L
     private var current: WeakReference<AlarmClockModule>? = null
+    private val pendingHandoffs = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
-    /** Tells the running app an alarm fired. False when no JS is running to receive it. */
-    fun emitRing(alarmId: Int, at: Long): Boolean {
+    /**
+     * Hands a ring to the running app instead of posting the ringing notification. If the app
+     * doesn't confirm with ackRing in time (no JS listening), the notification is shown after all.
+     * False when no app is running to hand off to.
+     */
+    fun handOffRing(context: Context, alarmId: Int, at: Long, title: String, body: String): Boolean {
       val module = current?.get() ?: return false
-      return try {
+      pendingHandoffs[alarmId] = at
+      try {
         module.sendEvent("onRing", mapOf("alarmId" to alarmId, "at" to at.toDouble()))
-        true
       } catch (_: Exception) {
-        false
+        pendingHandoffs.remove(alarmId)
+        return false
       }
+      val appContext = context.applicationContext
+      Handler(Looper.getMainLooper()).postDelayed({
+        if (pendingHandoffs.remove(alarmId, at)) RingNotification.show(appContext, alarmId, at, title, body)
+      }, HANDOFF_TIMEOUT_MS)
+      return true
     }
   }
 
