@@ -52,14 +52,30 @@ const CATALOG: CatalogEntry[] = [
   { name: "Make-A-Wish", description: "Grants wishes to children with critical illnesses.", category: "general", cause: "Children", website: "https://wish.org" },
   { name: "Team Rubicon", description: "Veterans who serve communities after disasters.", category: "general", cause: "Disaster relief", website: "https://teamrubicon.org" },
 
-  // Rivals (motivation by aversion): real, legitimate 501(c)(3) charities from opposite sides of
-  // well-known debates, so everyone can find one they'd hate to fund. Category key stays 'hated'.
-  { name: "NRA Foundation", description: "Funds firearms training, marksmanship and hunting education programs.", category: "hated", cause: "Gun debate", website: "https://www.nrafoundation.org", legacyNames: ["Anonymous Corp Lobby"] },
-  { name: "Brady Center to Prevent Gun Violence", description: "Campaigns and litigates for stricter gun-safety laws.", category: "hated", cause: "Gun debate", website: "https://www.bradyunited.org", legacyNames: ["Anti-Vax Foundation"] },
+  // Hated (motivation by aversion): real, legitimate 501(c)(3) charities that are among the most
+  // polarizing in the US, paired across both sides of each debate so everyone finds one they'd hate
+  // to fund. Descriptions stay factual and neutral. Every entry must stay a registered 501(c)(3).
+  { name: "NRA Foundation", description: "Funds firearms training, shooting sports and hunting education.", category: "hated", cause: "Guns", website: "https://www.nrafoundation.org", legacyNames: ["Anonymous Corp Lobby"] },
+  { name: "Brady Center to Prevent Gun Violence", description: "Campaigns and litigates for stricter gun laws.", category: "hated", cause: "Guns", website: "https://www.bradyunited.org", legacyNames: ["Anti-Vax Foundation"] },
+  { name: "Everytown for Gun Safety Support Fund", description: "Research and advocacy for gun-control policies.", category: "hated", cause: "Guns", website: "https://www.everytown.org" },
+  { name: "Planned Parenthood Federation of America", description: "Reproductive health care provider, including abortion services.", category: "hated", cause: "Abortion", website: "https://www.plannedparenthood.org" },
+  { name: "Students for Life of America", description: "Organizes students against abortion.", category: "hated", cause: "Abortion", website: "https://studentsforlife.org" },
   { name: "The Heritage Foundation", description: "Conservative think tank shaping public policy.", category: "hated", cause: "Politics", website: "https://www.heritage.org", legacyNames: ["Flat Earth Society"] },
   { name: "Center for American Progress", description: "Progressive think tank shaping public policy.", category: "hated", cause: "Politics", website: "https://www.americanprogress.org", legacyNames: ["Spam Political PAC"] },
+  { name: "Turning Point USA", description: "Organizes conservative activism on college campuses.", category: "hated", cause: "Politics", website: "https://www.tpusa.com" },
+  { name: "Media Matters for America", description: "Monitors and criticizes conservative media.", category: "hated", cause: "Media", website: "https://www.mediamatters.org" },
+  { name: "PragerU", description: "Produces short conservative educational videos.", category: "hated", cause: "Media", website: "https://www.prageru.com" },
   { name: "The Federalist Society", description: "Network of conservative and libertarian lawyers and judges.", category: "hated", cause: "Law", website: "https://fedsoc.org", legacyNames: ["Fossil Fuel Lobby"] },
   { name: "ACLU Foundation", description: "Litigates for civil liberties, often in controversial cases.", category: "hated", cause: "Law", website: "https://www.aclu.org" },
+  { name: "Southern Poverty Law Center", description: "Tracks and sues extremist groups; its 'hate group' labels are disputed.", category: "hated", cause: "Civil rights", website: "https://www.splcenter.org" },
+  { name: "Family Research Council", description: "Advocates socially conservative family and religious policy.", category: "hated", cause: "Civil rights", website: "https://www.frc.org" },
+  { name: "Freedom From Religion Foundation", description: "Fights religion in government and public schools.", category: "hated", cause: "Religion", website: "https://ffrf.org" },
+  { name: "Alliance Defending Freedom", description: "Christian legal group litigating religious-liberty cases.", category: "hated", cause: "Religion", website: "https://adflegal.org" },
+  { name: "Federation for American Immigration Reform", description: "Advocates sharply reduced immigration.", category: "hated", cause: "Immigration", website: "https://www.fairus.org" },
+  { name: "RAICES", description: "Legal services and advocacy for immigrants and refugees.", category: "hated", cause: "Immigration", website: "https://www.raicestexas.org" },
+  { name: "Greenpeace Fund", description: "Environmental campaigning, known for confrontational protests.", category: "hated", cause: "Climate", website: "https://www.greenpeace.org/usa" },
+  { name: "The Heartland Institute", description: "Think tank that disputes the climate-change consensus.", category: "hated", cause: "Climate", website: "https://heartland.org" },
+  { name: "PETA Foundation", description: "Animal-rights campaigns, known for provocative stunts.", category: "hated", cause: "Animals", website: "https://www.peta.org" },
 
   // System destination, never listed: snoozes from alarms set to "decide later"
   { name: PIGGY_BANK_NAME, description: "Your piggy bank: decide later which charity gets it.", category: "piggy", cause: "Piggy bank" },

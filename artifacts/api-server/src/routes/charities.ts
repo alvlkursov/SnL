@@ -68,6 +68,8 @@ router.get("/", async (req, res, next) => {
   // The piggy bank is a system destination, never a pickable charity
   const charities = category === "catalog"
     ? await query.where(notInArray(charitiesTable.category, ["hated", "piggy"])).orderBy(asc(charitiesTable.cause), asc(charitiesTable.name))
+    : category === "hated"
+      ? await query.where(eq(charitiesTable.category, "hated")).orderBy(asc(charitiesTable.cause), asc(charitiesTable.name))
     : category && category !== "piggy"
       ? await query.where(eq(charitiesTable.category, category)).orderBy(desc(charitiesTable.isHot), asc(charitiesTable.name))
       : await query.where(notInArray(charitiesTable.category, ["piggy"])).orderBy(asc(charitiesTable.name));

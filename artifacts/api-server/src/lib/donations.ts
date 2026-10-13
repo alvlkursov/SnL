@@ -9,7 +9,7 @@ type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * The alarm's chosen charity, or a random one from its category.
- * 'favorite' picks from the user's favorites (falling back to featured partners if they have none);
+ * 'favorite' picks from the user's favorites (the piggy bank while they have none);
  * 'piggy' parks the money in the user's piggy bank until they pick a charity.
  */
 export async function resolveCharity(
@@ -27,6 +27,8 @@ export async function resolveCharity(
       .innerJoin(charitiesTable, eq(userFavoriteCharitiesTable.charityId, charitiesTable.id))
       .where(eq(userFavoriteCharitiesTable.userId, alarm.userId))).map(r => r.charity);
   }
+  // No favorites picked yet: park the money in the piggy bank until the user decides
+  if (candidates.length === 0 && alarm.charityCategory === "favorite") return piggyBank();
   if (candidates.length === 0) {
     const category = alarm.charityCategory === "hated" ? "hated" : "recommended";
     candidates = await db.select().from(charitiesTable).where(eq(charitiesTable.category, category));

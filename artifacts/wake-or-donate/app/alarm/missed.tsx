@@ -6,7 +6,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms, type Alarm, type MissedEvent } from "@/context/AlarmContext";
 
-const CATEGORY_LABELS: Record<string, string> = { favorite: "Favorite", recommended: "Recommended", hated: "Rivals", piggy: "Piggy bank" };
+const CATEGORY_LABELS: Record<string, string> = { favorite: "Favorite", recommended: "Recommended", hated: "Hated", piggy: "Piggy bank" };
 
 /** The next time any enabled alarm rings. */
 function nextRing(alarms: Alarm[], now: Date): { at: Date; alarm: Alarm } | null {

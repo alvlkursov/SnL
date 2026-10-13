@@ -23,7 +23,7 @@ const CATEGORY_COLORS = {
 const CATEGORY_LABELS = {
   favorite: "Favorite",
   recommended: "Recommended",
-  hated: "Rivals",
+  hated: "Hated",
   piggy: "Piggy bank",
 };
 const CONFIRM_ICONS: Record<string, string> = {

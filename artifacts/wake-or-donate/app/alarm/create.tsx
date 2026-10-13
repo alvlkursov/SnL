@@ -9,9 +9,10 @@ import { router } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 import { WakeCodeRow } from "@/components/WakeCodeRow";
+import { FundPicker, type FundCategory } from "@/components/FundPicker";
 import { handlePaymentRequired } from "@/lib/billing";
 import { getWakeCode } from "@/lib/wakeCode";
-import { useAuth, BASE_URL } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const CONFIRM_METHODS = [
@@ -21,20 +22,12 @@ const CONFIRM_METHODS = [
   { key: "qr", label: "QR Code", icon: "qrcode-scan", desc: "Scan a QR code" },
 ];
 
-interface Charity {
-  id: number;
-  name: string;
-  description: string;
-  category: string;
-  isHot: boolean;
-}
 
 export default function CreateAlarmScreen() {
   const { createAlarm } = useAlarms();
   const { token } = useAuth();
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(false);
-  const [charities, setCharities] = useState<Charity[]>([]);
 
   // Form state
   const [label, setLabel] = useState("Wake Up");
@@ -42,7 +35,7 @@ export default function CreateAlarmScreen() {
   const [minutes, setMinutes] = useState("00");
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [donationAmount, setDonationAmount] = useState("5");
-  const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated" | "piggy">("recommended");
+  const [charityCategory, setCharityCategory] = useState<FundCategory>("hated");
   const [selectedCharityId, setSelectedCharityId] = useState<number | null>(null);
   const [confirmMethod, setConfirmMethod] = useState<"button" | "math" | "shake" | "qr">("button");
   // QR alarms need a code to scan: ask for one right away if none is saved yet
@@ -54,24 +47,6 @@ export default function CreateAlarmScreen() {
   };
   const [snoozeEnabled, setSnoozeEnabled] = useState(true);
   const [snoozeDuration, setSnoozeDuration] = useState("5");
-
-  useEffect(() => {
-    fetchCharities();
-  }, [charityCategory]);
-
-  const fetchCharities = async () => {
-    if (!token) return;
-    if (charityCategory === "piggy") { setCharities([]); setSelectedCharityId(null); return; }
-    try {
-      const url = `${BASE_URL}/charities?category=${charityCategory}`;
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.ok) {
-        const data = await res.json();
-        setCharities(data);
-        setSelectedCharityId(null);
-      }
-    } catch {}
-  };
 
   const toggleDay = (day: number) => {
     setSelectedDays(prev =>
@@ -93,6 +68,10 @@ export default function CreateAlarmScreen() {
     const amount = parseFloat(donationAmount);
     if (isNaN(amount) || amount <= 0) {
       Alert.alert("Error", "Please enter a valid donation amount");
+      return;
+    }
+    if (charityCategory === "hated" && !selectedCharityId) {
+      Alert.alert("Pick a hated fund", "Choose the cause you'd hate to fund the most — that's what gets you out of bed.");
       return;
     }
     setLoading(true);
@@ -216,75 +195,16 @@ export default function CreateAlarmScreen() {
           </View>
         </View>
 
-        {/* Charity category */}
+        {/* Where snoozes go */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Fund Category</Text>
-          <View style={styles.categoryGrid}>
-            <TouchableOpacity
-              style={[styles.categoryBtn, charityCategory === "favorite" && styles.categoryBtnActive, charityCategory === "favorite" && { borderColor: "#30D158" }]}
-              onPress={() => setCharityCategory("favorite")}
-            >
-              <Feather name="heart" size={18} color={charityCategory === "favorite" ? "#30D158" : "#8888AA"} />
-              <Text style={[styles.categoryBtnTitle, charityCategory === "favorite" && { color: "#30D158" }]}>Favorite</Text>
-              <Text style={styles.categoryBtnDesc}>Charities you love</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.categoryBtn, charityCategory === "recommended" && styles.categoryBtnActive, charityCategory === "recommended" && { borderColor: "#FF9F0A" }]}
-              onPress={() => setCharityCategory("recommended")}
-            >
-              <MaterialCommunityIcons name="fire" size={18} color={charityCategory === "recommended" ? "#FF9F0A" : "#8888AA"} />
-              <Text style={[styles.categoryBtnTitle, charityCategory === "recommended" && { color: "#FF9F0A" }]}>Recommended</Text>
-              <Text style={styles.categoryBtnDesc}>Hot causes we boost</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.categoryBtn, charityCategory === "hated" && styles.categoryBtnActive, charityCategory === "hated" && { borderColor: "#FF453A" }]}
-              onPress={() => setCharityCategory("hated")}
-            >
-              <Feather name="alert-triangle" size={18} color={charityCategory === "hated" ? "#FF453A" : "#8888AA"} />
-              <Text style={[styles.categoryBtnTitle, charityCategory === "hated" && { color: "#FF453A" }]}>Rivals</Text>
-              <Text style={styles.categoryBtnDesc}>A cause you'd hate to fund</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.categoryBtn, charityCategory === "piggy" && styles.categoryBtnActive, charityCategory === "piggy" && { borderColor: "#BF5AF2" }]}
-              onPress={() => setCharityCategory("piggy")}
-            >
-              <MaterialCommunityIcons name="piggy-bank-outline" size={18} color={charityCategory === "piggy" ? "#BF5AF2" : "#8888AA"} />
-              <Text style={[styles.categoryBtnTitle, charityCategory === "piggy" && { color: "#BF5AF2" }]}>Piggy bank</Text>
-              <Text style={styles.categoryBtnDesc}>Decide later</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Charity list */}
-          {charityCategory === "favorite" && charities.length === 0 && (
-            <TouchableOpacity style={{ marginTop: 10 }} onPress={() => router.push("/(tabs)/profile")}>
-              <Text style={{ fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular" }}>
-                You haven't picked favorites yet — until you do, donations go to a featured charity.{" "}
-                <Text style={{ color: "#30D158" }}>Choose favorites in Profile →</Text>
-              </Text>
-            </TouchableOpacity>
-          )}
-          {charities.length > 0 && (
-            <View style={styles.charityList}>
-              <Text style={styles.charityListLabel}>
-                {charityCategory === "favorite"
-                  ? "Your favorites (optional — otherwise rotates between them)"
-                  : "Select specific charity (optional)"}
-              </Text>
-              {charities.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.charityItem, selectedCharityId === c.id && styles.charityItemActive]}
-                  onPress={() => setSelectedCharityId(selectedCharityId === c.id ? null : c.id)}
-                >
-                  <View style={styles.charityItemLeft}>
-                    {c.isHot && <MaterialCommunityIcons name="fire" size={12} color="#FF9F0A" />}
-                    <Text style={styles.charityName}>{c.name}</Text>
-                  </View>
-                  {selectedCharityId === c.id && <Feather name="check" size={16} color="#FF5A3C" />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+          <Text style={styles.sectionLabel}>Where snoozes go</Text>
+          <FundPicker
+            token={token}
+            category={charityCategory}
+            onCategory={setCharityCategory}
+            charityId={selectedCharityId}
+            onCharity={setSelectedCharityId}
+          />
         </View>
 
         {/* Confirmation method */}
@@ -336,7 +256,7 @@ export default function CreateAlarmScreen() {
                 ))}
               </View>
               <Text style={styles.snoozeWarning}>
-                Each snooze adds ${donationAmount} to this month's bill{charityCategory === "piggy" ? " — it goes to your piggy bank" : ", for your selected fund"}
+                Each snooze adds ${donationAmount} to this month's bill{charityCategory === "hated" ? " — for the fund you hate" : ", for your favorites"}
               </Text>
             </View>
           )}

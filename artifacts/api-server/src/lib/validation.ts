@@ -59,7 +59,7 @@ export const createAlarmSchema = z.object({
   ...alarmFields,
   isEnabled: alarmFields.isEnabled.default(true),
   charityId: alarmFields.charityId.optional().default(null),
-  charityCategory: alarmFields.charityCategory.optional().default("recommended"),
+  charityCategory: alarmFields.charityCategory.optional().default("favorite"),
   confirmationMethod: alarmFields.confirmationMethod.default("button"),
   snoozeEnabled: alarmFields.snoozeEnabled.default(true),
   snoozeDurationMinutes: alarmFields.snoozeDurationMinutes.default(5),

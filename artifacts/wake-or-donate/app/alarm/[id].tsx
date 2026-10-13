@@ -9,9 +9,10 @@ import { router, useLocalSearchParams } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 import { WakeCodeRow } from "@/components/WakeCodeRow";
+import { FundPicker, toFundCategory, type FundCategory } from "@/components/FundPicker";
 import { handlePaymentRequired } from "@/lib/billing";
 import { getWakeCode } from "@/lib/wakeCode";
-import { useAuth, BASE_URL } from "@/context/AuthContext";
+import { useAuth } from "@/context/AuthContext";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const CONFIRM_METHODS = [
@@ -21,13 +22,6 @@ const CONFIRM_METHODS = [
   { key: "qr", label: "QR", icon: "qrcode-scan" },
 ];
 
-interface Charity {
-  id: number;
-  name: string;
-  description: string;
-  category: string;
-  isHot: boolean;
-}
 
 export default function AlarmDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -36,14 +30,13 @@ export default function AlarmDetailScreen() {
   const insets = useSafeAreaInsets();
   const alarm = alarms.find(a => a.id === parseInt(id ?? "0"));
   const [saving, setSaving] = useState(false);
-  const [charities, setCharities] = useState<Charity[]>([]);
 
   const [label, setLabel] = useState(alarm?.label ?? "");
   const [hours, setHours] = useState(alarm?.time.split(":")[0] ?? "07");
   const [minutes, setMinutes] = useState(alarm?.time.split(":")[1] ?? "00");
   const [selectedDays, setSelectedDays] = useState<number[]>(alarm?.days ?? []);
   const [donationAmount, setDonationAmount] = useState(String(alarm?.donationAmount ?? 5));
-  const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated" | "piggy">(alarm?.charityCategory ?? "recommended");
+  const [charityCategory, setCharityCategory] = useState<FundCategory>(toFundCategory(alarm?.charityCategory));
   const [selectedCharityId, setSelectedCharityId] = useState<number | null>(alarm?.charityId ?? null);
   const [confirmMethod, setConfirmMethod] = useState<"button" | "math" | "shake" | "qr">(alarm?.confirmationMethod ?? "button");
   // QR alarms need a code to scan: ask for one right away if none is saved yet
@@ -55,21 +48,6 @@ export default function AlarmDetailScreen() {
   };
   const [snoozeEnabled, setSnoozeEnabled] = useState(alarm?.snoozeEnabled ?? true);
   const [snoozeDuration, setSnoozeDuration] = useState(String(alarm?.snoozeDurationMinutes ?? 5));
-
-  useEffect(() => {
-    if (!token) return;
-    if (charityCategory === "piggy") { setCharities([]); return; }
-    fetch(`${BASE_URL}/charities?category=${charityCategory}`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(r => (r.ok ? r.json() : []))
-      .then(setCharities)
-      .catch(() => {});
-  }, [charityCategory, token]);
-
-  const changeCategory = (cat: typeof charityCategory) => {
-    if (cat === charityCategory) return;
-    setCharityCategory(cat);
-    setSelectedCharityId(null); // a charity from another category no longer applies
-  };
 
   if (!alarm) {
     return (
@@ -86,6 +64,10 @@ export default function AlarmDetailScreen() {
   };
 
   const handleSave = async () => {
+    if (charityCategory === "hated" && !selectedCharityId) {
+      Alert.alert("Pick a hated fund", "Choose the cause you'd hate to fund the most — that's what gets you out of bed.");
+      return;
+    }
     setSaving(true);
     try {
       await updateAlarm(alarm.id, {
@@ -196,44 +178,14 @@ export default function AlarmDetailScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Fund Category</Text>
-          <View style={styles.categoryRow}>
-            {(["favorite", "recommended", "hated", "piggy"] as const).map((cat) => {
-              const colors = { favorite: "#30D158", recommended: "#FF9F0A", hated: "#FF453A", piggy: "#BF5AF2" };
-              const labels = { favorite: "Favorite", recommended: "Picks", hated: "Rivals", piggy: "Piggy" };
-              return (
-                <TouchableOpacity
-                  key={cat}
-                  style={[styles.catBtn, charityCategory === cat && { borderColor: colors[cat], backgroundColor: colors[cat] + "22" }]}
-                  onPress={() => changeCategory(cat)}
-                >
-                  <Text style={[styles.catBtnText, charityCategory === cat && { color: colors[cat] }]}>{labels[cat]}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          {charityCategory === "favorite" && charities.length === 0 && (
-            <TouchableOpacity style={{ marginTop: 10 }} onPress={() => router.push("/(tabs)/profile")}>
-              <Text style={{ fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular" }}>
-                You haven't picked favorites yet — until you do, donations go to a featured charity.{" "}
-                <Text style={{ color: "#30D158" }}>Choose favorites in Profile →</Text>
-              </Text>
-            </TouchableOpacity>
-          )}
-          {charities.length > 0 && (
-            <View style={{ gap: 6, marginTop: 10 }}>
-              {charities.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[styles.charityItem, selectedCharityId === c.id && styles.charityItemActive]}
-                  onPress={() => setSelectedCharityId(selectedCharityId === c.id ? null : c.id)}
-                >
-                  <Text style={styles.charityName}>{c.name}</Text>
-                  {selectedCharityId === c.id && <Feather name="check" size={14} color="#FF5A3C" />}
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+          <Text style={styles.sectionLabel}>Where snoozes go</Text>
+          <FundPicker
+            token={token}
+            category={charityCategory}
+            onCategory={setCharityCategory}
+            charityId={selectedCharityId}
+            onCharity={setSelectedCharityId}
+          />
         </View>
 
         <View style={styles.section}>

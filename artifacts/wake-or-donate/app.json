@@ -2,7 +2,7 @@
   "expo": {
     "name": "WakeOrDonate",
     "slug": "wake-or-donate",
-    "version": "1.0.17",
+    "version": "1.0.18",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "wake-or-donate",
@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "com.wakeordonate.app",
-      "versionCode": 18,
+      "versionCode": 19,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0A0A0F"
