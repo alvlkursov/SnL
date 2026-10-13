@@ -10,6 +10,7 @@ import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 import { WakeCodeRow } from "@/components/WakeCodeRow";
 import { FundPicker, type FundCategory } from "@/components/FundPicker";
+import { AlarmNameInput, alarmName } from "@/components/AlarmNameInput";
 import { handlePaymentRequired } from "@/lib/billing";
 import { getWakeCode } from "@/lib/wakeCode";
 import { useAuth } from "@/context/AuthContext";
@@ -30,7 +31,7 @@ export default function CreateAlarmScreen() {
   const [loading, setLoading] = useState(false);
 
   // Form state
-  const [label, setLabel] = useState("Wake Up");
+  const [label, setLabel] = useState("");
   const [hours, setHours] = useState("07");
   const [minutes, setMinutes] = useState("00");
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]);
@@ -77,7 +78,7 @@ export default function CreateAlarmScreen() {
     setLoading(true);
     try {
       await createAlarm({
-        label,
+        label: alarmName(label),
         time: `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`,
         days: selectedDays.sort(),
         isEnabled: true,
@@ -114,16 +115,10 @@ export default function CreateAlarmScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomPad }}>
-        {/* Label */}
+        {/* Name */}
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Label</Text>
-          <TextInput
-            style={styles.textInput}
-            value={label}
-            onChangeText={setLabel}
-            placeholder="Alarm label"
-            placeholderTextColor="#8888AA"
-          />
+          <Text style={styles.sectionLabel}>Alarm name</Text>
+          <AlarmNameInput value={label} onChange={setLabel} />
         </View>
 
         {/* Time picker */}

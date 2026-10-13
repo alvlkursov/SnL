@@ -10,6 +10,7 @@ import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 import { WakeCodeRow } from "@/components/WakeCodeRow";
 import { FundPicker, toFundCategory, type FundCategory } from "@/components/FundPicker";
+import { AlarmNameInput, alarmName } from "@/components/AlarmNameInput";
 import { handlePaymentRequired } from "@/lib/billing";
 import { getWakeCode } from "@/lib/wakeCode";
 import { useAuth } from "@/context/AuthContext";
@@ -71,7 +72,7 @@ export default function AlarmDetailScreen() {
     setSaving(true);
     try {
       await updateAlarm(alarm.id, {
-        label,
+        label: alarmName(label),
         time: `${hours.padStart(2, "0")}:${minutes.padStart(2, "0")}`,
         days: selectedDays.sort(),
         donationAmount: parseFloat(donationAmount),
@@ -117,13 +118,8 @@ export default function AlarmDetailScreen() {
         </TouchableOpacity>
 
         <View style={styles.section}>
-          <Text style={styles.sectionLabel}>Label</Text>
-          <TextInput
-            style={styles.textInput}
-            value={label}
-            onChangeText={setLabel}
-            placeholderTextColor="#8888AA"
-          />
+          <Text style={styles.sectionLabel}>Alarm name</Text>
+          <AlarmNameInput value={label} onChange={setLabel} />
         </View>
 
         <View style={styles.section}>
