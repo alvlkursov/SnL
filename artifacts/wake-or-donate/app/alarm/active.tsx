@@ -370,9 +370,9 @@ export default function ActiveAlarmScreen() {
               disabled={busy}
               activeOpacity={0.85}
             >
-              <MaterialCommunityIcons name="alarm-snooze" size={30} color="#FF9F0A" />
-              <Text style={[styles.bigBtnText, { color: "#FF9F0A" }]}>SNOOZE</Text>
-              <Text style={styles.bigBtnSub}>{alarm?.snoozeDurationMinutes ?? 5} min · ${amount}</Text>
+              <MaterialCommunityIcons name="alarm-snooze" size={30} color="#0A0A0F" />
+              <Text style={[styles.bigBtnText, { color: "#0A0A0F" }]}>SNOOZE</Text>
+              <Text style={[styles.bigBtnSub, { color: "#0A0A0FAA" }]}>{alarm?.snoozeDurationMinutes ?? 5} min · ${amount}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -381,9 +381,9 @@ export default function ActiveAlarmScreen() {
             disabled={busy}
             activeOpacity={0.85}
           >
-            {busy ? <ActivityIndicator color="#0A0A0F" /> : <Feather name="sun" size={30} color="#0A0A0F" />}
-            <Text style={[styles.bigBtnText, { color: "#0A0A0F" }]}>WAKE UP</Text>
-            <Text style={[styles.bigBtnSub, { color: "#0A0A0FAA" }]}>
+            {busy ? <ActivityIndicator color="#AAAACC" /> : <Feather name="sun" size={30} color="#AAAACC" />}
+            <Text style={[styles.bigBtnText, { color: "#AAAACC" }]}>WAKE UP</Text>
+            <Text style={[styles.bigBtnSub, { color: "#8888AA" }]}>
               {confirmMethod === "button" ? "I'm up" : challengeSeconds >= 60 ? `${challengeSeconds / 60} min to prove it` : `${challengeSeconds}s to prove it`}
             </Text>
           </TouchableOpacity>
@@ -408,8 +408,9 @@ const styles = StyleSheet.create({
   bigBtn: {
     width: "100%", borderRadius: 28, paddingVertical: 26, alignItems: "center", justifyContent: "center", gap: 4,
   },
-  snoozeBtn: { backgroundColor: "#FF9F0A1F", borderWidth: 2, borderColor: "#FF9F0A" },
-  wakeBtn: { backgroundColor: "#30D158" },
+  // Snooze is the tempting one; waking up takes the effort
+  snoozeBtn: { backgroundColor: "#30D158" },
+  wakeBtn: { backgroundColor: "#1C1C2E", borderWidth: 1.5, borderColor: "#3A3A55" },
   bigBtnText: { fontSize: 26, fontFamily: "Inter_700Bold", letterSpacing: 1 },
   bigBtnSub: { fontSize: 13, fontFamily: "Inter_500Medium", color: "#FF9F0AAA" },
   challengeHeader: { alignItems: "center", gap: 10, width: "100%" },
