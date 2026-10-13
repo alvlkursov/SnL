@@ -38,6 +38,10 @@ function RootLayoutNav() {
       <Stack.Screen name="alarm/receipt" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm-setup" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="wake-code" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="billing/index" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="billing/card" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="billing/[id]" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="piggy" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="diagnostics" options={{ presentation: "modal", headerShown: false }} />
     </Stack>
   );

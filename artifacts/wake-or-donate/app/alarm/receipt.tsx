@@ -63,7 +63,7 @@ export default function DonationReceiptScreen() {
           <Feather name="check-circle" size={32} color="#30D158" />
         </View>
         <Text style={styles.highlightLabel}>
-          {isVoluntary ? "Voluntary Donation" : "Donation Processed"}
+          {isVoluntary ? "Voluntary Donation" : "Added to Your Bill"}
         </Text>
         <Text style={styles.highlightAmount}>${amount}</Text>
         <Text style={styles.highlightFund}>to {fund}</Text>
@@ -100,8 +100,8 @@ export default function DonationReceiptScreen() {
         <Feather name="info" size={14} color="#8888AA" />
         <Text style={styles.noteText}>
           {isVoluntary
-            ? "Thank you for your generosity! This donation was made voluntarily."
-            : "This donation was automatically processed according to your alarm settings."}
+            ? "Thank you for your generosity! It's on this month's bill and goes to the charity in our monthly payout."
+            : "It's on this month's bill, charged to your card on the 1st, and goes to the charity in our monthly payout."}
         </Text>
       </View>
 

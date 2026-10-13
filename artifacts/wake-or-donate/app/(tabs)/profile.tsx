@@ -10,6 +10,7 @@ import Constants from "expo-constants";
 import { useAuth, publicPageUrl, BASE_URL } from "@/context/AuthContext";
 import { FavoriteCharitiesPicker, MAX_FAVORITES, type CharityInfo } from "@/components/FavoriteCharitiesPicker";
 import { confirmAction } from "@/lib/confirm";
+import { billingApi, formatCents, type BillingOverview } from "@/lib/billing";
 import { AlarmClock } from "@/modules/alarm-clock";
 import { router, useFocusEffect } from "expo-router";
 
@@ -62,7 +63,11 @@ export default function ProfileScreen() {
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 84);
 
-  const [cardConnected, setCardConnected] = useState(false);
+  const [billing, setBilling] = useState<BillingOverview | null>(null);
+  useFocusEffect(useCallback(() => {
+    if (!token) return;
+    billingApi<BillingOverview>(token, "").then(setBilling).catch(() => {});
+  }, [token]));
   const [donationAmount, setDonationAmount] = useState("5");
   const [snoozeLimit, setSnoozeLimit] = useState("3");
   const [dailyLimit, setDailyLimit] = useState("20");
@@ -173,38 +178,28 @@ export default function ProfileScreen() {
       <Card>
         <Row
           icon="credit-card"
-          label="Payment Method"
+          label="Payment method"
+          onPress={() => (user ? router.push("/billing/card") : router.replace("/auth"))}
           right={
-            <View style={[styles.badge, cardConnected ? styles.badgeGreen : styles.badgeGray]}>
-              <Text style={[styles.badgeText, cardConnected ? { color: "#30D158" } : { color: "#8888AA" }]}>
-                {cardConnected ? "Card connected" : "Not connected"}
+            <View style={[styles.badge, billing?.card ? styles.badgeGreen : styles.badgeGray]}>
+              <Text style={[styles.badgeText, billing?.card ? { color: "#30D158" } : { color: "#8888AA" }]}>
+                {billing?.card ? `${billing.card.brand} •••• ${billing.card.last4}` : "Add card"}
               </Text>
             </View>
           }
         />
         <Divider />
-        {!cardConnected ? (
-          <Row
-            icon="plus-circle"
-            label="Connect card"
-            onPress={() => {
-              Alert.alert("Connect Card", "Payment integration coming soon.");
-              setCardConnected(false);
-            }}
-          />
-        ) : (
-          <Row
-            icon="trash-2"
-            label="Remove card"
-            onPress={() => {
-              Alert.alert("Remove Card", "Are you sure?", [
-                { text: "Cancel", style: "cancel" },
-                { text: "Remove", style: "destructive", onPress: () => setCardConnected(false) },
-              ]);
-            }}
-            danger
-          />
-        )}
+        <Row
+          icon="file-text"
+          label="Billing & receipts"
+          value={billing ? `This month: ${formatCents(billing.current.totalCents)}` : undefined}
+          onPress={() => (user ? router.push("/billing") : router.replace("/auth"))}
+          right={billing?.blocked && billing.card ? (
+            <View style={styles.setupBadge}><Text style={styles.setupBadgeText}>Unpaid</Text></View>
+          ) : undefined}
+        />
+        <Divider />
+        <Row icon="archive" label="Piggy bank" onPress={() => (user ? router.push("/piggy") : router.replace("/auth"))} />
       </Card>
 
       {/* ── DONATIONS ── */}

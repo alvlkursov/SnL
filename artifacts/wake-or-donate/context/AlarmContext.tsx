@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { useAuth, BASE_URL } from "./AuthContext";
 import { syncAlarmNotifications } from "@/lib/alarmNotifications";
+import { apiErrorFrom } from "@/lib/billing";
 
 export interface Alarm {
   id: number;
@@ -11,7 +12,7 @@ export interface Alarm {
   isEnabled: boolean;
   donationAmount: number;
   charityId: number | null;
-  charityCategory: "favorite" | "recommended" | "hated" | null;
+  charityCategory: "favorite" | "recommended" | "hated" | "piggy" | null;
   confirmationMethod: "button" | "math" | "shake" | "qr";
   snoozeEnabled: boolean;
   snoozeCount: number;
@@ -120,7 +121,7 @@ export function AlarmProvider({ children }: { children: ReactNode }) {
       headers: authHeaders(),
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error("Failed to create alarm");
+    if (!res.ok) throw await apiErrorFrom(res, "Failed to create alarm");
     const alarm = await res.json();
     setAlarms(prev => [...prev, alarm]);
   };
@@ -131,7 +132,7 @@ export function AlarmProvider({ children }: { children: ReactNode }) {
       headers: authHeaders(),
       body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error("Failed to update alarm");
+    if (!res.ok) throw await apiErrorFrom(res, "Failed to update alarm");
     const updated = await res.json();
     setAlarms(prev => prev.map(a => a.id === id ? updated : a));
   };
@@ -147,9 +148,8 @@ export function AlarmProvider({ children }: { children: ReactNode }) {
       headers: authHeaders(),
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.message ?? "Request failed");
-    return json as T;
+    if (!res.ok) throw await apiErrorFrom(res, "Request failed");
+    return (await res.json()) as T;
   };
 
   // ringAt: the ring time the phone scheduled, so the server matches the exact occurrence

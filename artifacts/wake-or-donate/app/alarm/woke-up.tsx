@@ -7,6 +7,7 @@ import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import { goHome } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
+import { handlePaymentRequired } from "@/lib/billing";
 
 export default function WokeUpScreen() {
   const insets = useSafeAreaInsets();
@@ -39,6 +40,7 @@ export default function WokeUpScreen() {
         },
       });
     } catch (e: any) {
+      if (handlePaymentRequired(e)) return;
       Alert.alert("Donation failed", e?.message ?? "Please try again.");
     }
   };

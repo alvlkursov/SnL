@@ -81,7 +81,7 @@ export default function SnoozeChargeScreen() {
         <View style={styles.hintCard}>
           <Feather name="info" size={15} color="#8888AA" style={{ marginTop: 1 }} />
           <Text style={styles.hintText}>
-            Each snooze charges a small donation. You have {limit - current} snooze{limit - current !== 1 ? "s" : ""} remaining.
+            Each snooze adds a small donation to this month's bill. You have {limit - current} snooze{limit - current !== 1 ? "s" : ""} remaining.
           </Text>
         </View>
       )}

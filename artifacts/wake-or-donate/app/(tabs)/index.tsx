@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
-  Platform, Switch, RefreshControl,
+  Platform, Switch, RefreshControl, Alert,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -9,6 +9,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAlarms, Alarm } from "@/context/AlarmContext";
 import { useAuth } from "@/context/AuthContext";
 import { confirmAction } from "@/lib/confirm";
+import { handlePaymentRequired } from "@/lib/billing";
 import { subscribeSnoozes } from "@/lib/alarmNotifications";
 import { nextRingTime, formatCountdown, formatRingDay } from "@/lib/alarmTimes";
 
@@ -17,11 +18,13 @@ const CATEGORY_COLORS = {
   favorite: "#30D158",
   recommended: "#FF9F0A",
   hated: "#FF453A",
+  piggy: "#BF5AF2",
 };
 const CATEGORY_LABELS = {
   favorite: "Favorite",
   recommended: "Recommended",
-  hated: "Hated",
+  hated: "Rivals",
+  piggy: "Piggy bank",
 };
 const CONFIRM_ICONS: Record<string, string> = {
   button: "hand-pointing-right",
@@ -153,7 +156,11 @@ export default function AlarmsScreen() {
   }, [fetchAlarms]);
 
   const handleToggle = async (id: number, enabled: boolean) => {
-    await updateAlarm(id, { isEnabled: enabled });
+    try {
+      await updateAlarm(id, { isEnabled: enabled });
+    } catch (e: any) {
+      if (!handlePaymentRequired(e)) Alert.alert("Error", e?.message ?? "Couldn't update the alarm");
+    }
   };
 
   const handlePress = (alarm: Alarm) => {

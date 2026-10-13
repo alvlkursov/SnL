@@ -9,6 +9,7 @@ import { router } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 import { WakeCodeRow } from "@/components/WakeCodeRow";
+import { handlePaymentRequired } from "@/lib/billing";
 import { getWakeCode } from "@/lib/wakeCode";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
 
@@ -41,7 +42,7 @@ export default function CreateAlarmScreen() {
   const [minutes, setMinutes] = useState("00");
   const [selectedDays, setSelectedDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [donationAmount, setDonationAmount] = useState("5");
-  const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated">("recommended");
+  const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated" | "piggy">("recommended");
   const [selectedCharityId, setSelectedCharityId] = useState<number | null>(null);
   const [confirmMethod, setConfirmMethod] = useState<"button" | "math" | "shake" | "qr">("button");
   // QR alarms need a code to scan: ask for one right away if none is saved yet
@@ -60,6 +61,7 @@ export default function CreateAlarmScreen() {
 
   const fetchCharities = async () => {
     if (!token) return;
+    if (charityCategory === "piggy") { setCharities([]); setSelectedCharityId(null); return; }
     try {
       const url = `${BASE_URL}/charities?category=${charityCategory}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -109,6 +111,7 @@ export default function CreateAlarmScreen() {
       });
       closeScreen();
     } catch (e: any) {
+      if (handlePaymentRequired(e)) return;
       Alert.alert("Error", e.message ?? "Failed to create alarm");
     } finally {
       setLoading(false);
@@ -238,8 +241,16 @@ export default function CreateAlarmScreen() {
               onPress={() => setCharityCategory("hated")}
             >
               <Feather name="alert-triangle" size={18} color={charityCategory === "hated" ? "#FF453A" : "#8888AA"} />
-              <Text style={[styles.categoryBtnTitle, charityCategory === "hated" && { color: "#FF453A" }]}>Hated</Text>
-              <Text style={styles.categoryBtnDesc}>Max motivation!</Text>
+              <Text style={[styles.categoryBtnTitle, charityCategory === "hated" && { color: "#FF453A" }]}>Rivals</Text>
+              <Text style={styles.categoryBtnDesc}>A cause you'd hate to fund</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.categoryBtn, charityCategory === "piggy" && styles.categoryBtnActive, charityCategory === "piggy" && { borderColor: "#BF5AF2" }]}
+              onPress={() => setCharityCategory("piggy")}
+            >
+              <MaterialCommunityIcons name="piggy-bank-outline" size={18} color={charityCategory === "piggy" ? "#BF5AF2" : "#8888AA"} />
+              <Text style={[styles.categoryBtnTitle, charityCategory === "piggy" && { color: "#BF5AF2" }]}>Piggy bank</Text>
+              <Text style={styles.categoryBtnDesc}>Decide later</Text>
             </TouchableOpacity>
           </View>
 
@@ -325,7 +336,7 @@ export default function CreateAlarmScreen() {
                 ))}
               </View>
               <Text style={styles.snoozeWarning}>
-                Each snooze will donate ${donationAmount} to your selected fund
+                Each snooze adds ${donationAmount} to this month's bill{charityCategory === "piggy" ? " — it goes to your piggy bank" : ", for your selected fund"}
               </Text>
             </View>
           )}

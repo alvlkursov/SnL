@@ -6,7 +6,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms, type Alarm, type MissedEvent } from "@/context/AlarmContext";
 
-const CATEGORY_LABELS: Record<string, string> = { favorite: "Favorite", recommended: "Recommended", hated: "Hated" };
+const CATEGORY_LABELS: Record<string, string> = { favorite: "Favorite", recommended: "Recommended", hated: "Rivals", piggy: "Piggy bank" };
 
 /** The next time any enabled alarm rings. */
 function nextRing(alarms: Alarm[], now: Date): { at: Date; alarm: Alarm } | null {
@@ -151,7 +151,7 @@ export default function MissedAlarmScreen() {
         <View style={styles.explanationCard}>
           <Feather name="info" size={16} color="#8888AA" style={{ marginTop: 2 }} />
           <Text style={styles.explanationText}>
-            A missed alarm donates double the alarm's amount. That's the deal you made with yourself — get it next time.
+            A missed alarm adds double the alarm's amount to this month's bill. That's the deal you made with yourself — get it next time.
           </Text>
         </View>
       </ScrollView>

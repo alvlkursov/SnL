@@ -95,7 +95,10 @@ Routes:
 
 ## Notes
 
-- Payment processing (PayPal/Google Pay/Stripe) is designed as a flow but actual payment API integration requires credentials from the user
+- **Billing** (`artifacts/api-server/src/lib/billing.ts`, rules in `src/lib/rules.ts`): snoozes, misses and voluntary donations are owed on the month's bill; on the 1st (or once $50 is owed) the card is charged once: donations + fee of 10%, minimum $1. Failed charges retry after 1/3/7 days and block new stakes (HTTP 402) until paid. A billing scheduler runs hourly inside the API process.
+- **Piggy bank**: alarms with category `piggy` park money there; it can be donated anytime, taken back 90–120 days after it's paid, then we donate it ("Our choice" payout).
+- **Payouts**: `/api/admin` (Basic auth with the `ADMIN_PASSWORD` secret) prepares one payout per charity, takes the charity's receipt link and marks it sent; `/api/transparency` lists all sent payouts publicly.
+- **Payment processors** are pluggable (`src/lib/payments/`); `PAYMENTS_PROVIDER` defaults to `test`, which only accepts test cards (4242 4242 4242 4242 works, …0341 declines charges, …0002 fails the $1 check). A real provider (Rapyd / Cardcom / Grow) collects cards on its hosted page and plugs in there.
 - Donation amounts are tracked in the DB and displayed in stats
 - Currency: USD (`$`) everywhere
 - After pulling schema changes run `pnpm --filter @workspace/db run push` to create new tables (e.g. `sessions`)

@@ -9,6 +9,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
 import { WakeCodeRow } from "@/components/WakeCodeRow";
+import { handlePaymentRequired } from "@/lib/billing";
 import { getWakeCode } from "@/lib/wakeCode";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
 
@@ -42,7 +43,7 @@ export default function AlarmDetailScreen() {
   const [minutes, setMinutes] = useState(alarm?.time.split(":")[1] ?? "00");
   const [selectedDays, setSelectedDays] = useState<number[]>(alarm?.days ?? []);
   const [donationAmount, setDonationAmount] = useState(String(alarm?.donationAmount ?? 5));
-  const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated">(alarm?.charityCategory ?? "recommended");
+  const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated" | "piggy">(alarm?.charityCategory ?? "recommended");
   const [selectedCharityId, setSelectedCharityId] = useState<number | null>(alarm?.charityId ?? null);
   const [confirmMethod, setConfirmMethod] = useState<"button" | "math" | "shake" | "qr">(alarm?.confirmationMethod ?? "button");
   // QR alarms need a code to scan: ask for one right away if none is saved yet
@@ -57,6 +58,7 @@ export default function AlarmDetailScreen() {
 
   useEffect(() => {
     if (!token) return;
+    if (charityCategory === "piggy") { setCharities([]); return; }
     fetch(`${BASE_URL}/charities?category=${charityCategory}`, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => (r.ok ? r.json() : []))
       .then(setCharities)
@@ -99,6 +101,7 @@ export default function AlarmDetailScreen() {
       });
       closeScreen();
     } catch (e: any) {
+      if (handlePaymentRequired(e)) return;
       Alert.alert("Error", e.message ?? "Failed to save");
     } finally {
       setSaving(false);
@@ -195,9 +198,9 @@ export default function AlarmDetailScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Fund Category</Text>
           <View style={styles.categoryRow}>
-            {(["favorite", "recommended", "hated"] as const).map((cat) => {
-              const colors = { favorite: "#30D158", recommended: "#FF9F0A", hated: "#FF453A" };
-              const labels = { favorite: "Favorite", recommended: "Recommended", hated: "Hated" };
+            {(["favorite", "recommended", "hated", "piggy"] as const).map((cat) => {
+              const colors = { favorite: "#30D158", recommended: "#FF9F0A", hated: "#FF453A", piggy: "#BF5AF2" };
+              const labels = { favorite: "Favorite", recommended: "Picks", hated: "Rivals", piggy: "Piggy" };
               return (
                 <TouchableOpacity
                   key={cat}
