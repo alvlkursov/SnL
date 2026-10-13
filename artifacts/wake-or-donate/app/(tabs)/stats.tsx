@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
-  View, Text, StyleSheet, ScrollView, Platform,
-  TouchableOpacity, ActivityIndicator,
+  View, Text, StyleSheet, ScrollView, Platform, ActivityIndicator, RefreshControl, TouchableOpacity,
 } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
+import { confirmAction } from "@/lib/confirm";
 
 interface Stats {
   totalDonated: number;
@@ -13,8 +14,17 @@ interface Stats {
   alarmsTriggered: number;
   alarmsDismissed: number;
   snoozeCount: number;
+  missedCount: number;
+  onTimeCount: number;
+  streak: number;
   successRate: number;
 }
+
+const REASONS: Record<string, { label: string; icon: "alarm-snooze" | "alarm-off" | "heart"; color: string }> = {
+  snooze: { label: "Snoozed", icon: "alarm-snooze", color: "#FF9F0A" },
+  missed: { label: "Missed", icon: "alarm-off", color: "#FF453A" },
+  voluntary: { label: "Voluntary", icon: "heart", color: "#30D158" },
+};
 
 interface Donation {
   id: number;
@@ -31,16 +41,12 @@ export default function StatsScreen() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [donations, setDonations] = useState<Donation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 84);
 
-  useEffect(() => {
-    fetchData();
-  }, [token]);
-
   const fetchData = async () => {
     if (!token) return;
-    setLoading(true);
     try {
       const [statsRes, donationsRes] = await Promise.all([
         fetch(`${BASE_URL}/donations/stats`, { headers: { Authorization: `Bearer ${token}` } }),
@@ -50,8 +56,23 @@ export default function StatsScreen() {
       if (donationsRes.ok) setDonations(await donationsRes.json());
     } catch {} finally {
       setLoading(false);
+      setRefreshing(false);
     }
   };
+
+  const resetStats = async () => {
+    const ok = await confirmAction(
+      "Reset statistics",
+      "This deletes your alarm history and donation records. It can't be undone.",
+      "Reset",
+    );
+    if (!ok || !token) return;
+    await fetch(`${BASE_URL}/donations/reset`, { method: "POST", headers: { Authorization: `Bearer ${token}` } }).catch(() => {});
+    fetchData();
+  };
+
+  // Refresh every time the tab is opened: alarms are dismissed/missed on other screens
+  useFocusEffect(useCallback(() => { fetchData(); }, [token]));
 
   const formatDate = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -74,8 +95,16 @@ export default function StatsScreen() {
       style={[styles.container, { paddingTop: topPad }]}
       contentContainerStyle={{ paddingBottom: bottomPad }}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} tintColor="#FF5A3C" onRefresh={() => { setRefreshing(true); fetchData(); }} />
+      }
     >
-      <Text style={styles.headerTitle}>Statistics</Text>
+      <View style={styles.headerRow}>
+        <Text style={styles.headerTitle}>Statistics</Text>
+        <TouchableOpacity onPress={resetStats} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={styles.resetText}>Reset</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Success rate ring */}
       <View style={styles.ringCard}>
@@ -95,12 +124,21 @@ export default function StatsScreen() {
             <Text style={styles.ringStatLabel}>Snoozed</Text>
           </View>
           <View style={styles.ringStat}>
-            <MaterialCommunityIcons name="alarm" size={20} color="#8888AA" />
-            <Text style={styles.ringStatNum}>{stats?.alarmsTriggered ?? 0}</Text>
-            <Text style={styles.ringStatLabel}>Total</Text>
+            <MaterialCommunityIcons name="alarm-off" size={20} color="#FF453A" />
+            <Text style={styles.ringStatNum}>{stats?.missedCount ?? 0}</Text>
+            <Text style={styles.ringStatLabel}>Missed</Text>
+          </View>
+          <View style={styles.ringStat}>
+            <MaterialCommunityIcons name="fire" size={20} color="#FF5A3C" />
+            <Text style={styles.ringStatNum}>{stats?.streak ?? 0}</Text>
+            <Text style={styles.ringStatLabel}>Streak</Text>
           </View>
         </View>
       </View>
+      <Text style={styles.note}>
+        {stats?.alarmsTriggered ?? 0} real alarm{(stats?.alarmsTriggered ?? 0) === 1 ? "" : "s"} counted
+        {" · "}{stats?.onTimeCount ?? 0} on time without snoozing.
+      </Text>
 
       {/* Donation total */}
       <View style={styles.donationCard}>
@@ -120,24 +158,21 @@ export default function StatsScreen() {
           <Text style={styles.emptySubtext}>Keep snoozing and donate to charity!</Text>
         </View>
       ) : (
-        donations.slice(0, 20).map((d) => (
-          <View key={d.id} style={styles.donationItem}>
-            <View style={[styles.donationIcon, { backgroundColor: d.reason === "snooze" ? "#FF9F0A22" : "#FF453A22" }]}>
-              <MaterialCommunityIcons
-                name={d.reason === "snooze" ? "alarm-snooze" : "alarm-off"}
-                size={18}
-                color={d.reason === "snooze" ? "#FF9F0A" : "#FF453A"}
-              />
+        donations.slice(0, 20).map((d) => {
+          const reason = REASONS[d.reason] ?? REASONS.missed;
+          return (
+            <View key={d.id} style={styles.donationItem}>
+              <View style={[styles.donationIcon, { backgroundColor: reason.color + "22" }]}>
+                <MaterialCommunityIcons name={reason.icon} size={18} color={reason.color} />
+              </View>
+              <View style={styles.donationInfo}>
+                <Text style={styles.donationCharity}>{d.charityName}</Text>
+                <Text style={styles.donationMeta}>{reason.label} · {formatDate(d.createdAt)}</Text>
+              </View>
+              <Text style={styles.donationAmt}>${d.amount.toFixed(2)}</Text>
             </View>
-            <View style={styles.donationInfo}>
-              <Text style={styles.donationCharity}>{d.charityName}</Text>
-              <Text style={styles.donationMeta}>
-                {d.reason === "snooze" ? "Snoozed" : "Missed"} · {formatDate(d.createdAt)}
-              </Text>
-            </View>
-            <Text style={styles.donationAmt}>${d.amount.toFixed(2)}</Text>
-          </View>
-        ))
+          );
+        })
       )}
     </ScrollView>
   );
@@ -146,9 +181,15 @@ export default function StatsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0A0A0F" },
   centered: { alignItems: "center", justifyContent: "center" },
-  headerTitle: {
-    fontSize: 28, fontWeight: "700", color: "#F0F0FF", fontFamily: "Inter_700Bold",
+  headerRow: {
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
     paddingHorizontal: 20, marginBottom: 20,
+  },
+  headerTitle: { fontSize: 28, fontWeight: "700", color: "#F0F0FF", fontFamily: "Inter_700Bold" },
+  resetText: { fontSize: 14, fontFamily: "Inter_500Medium", color: "#8888AA" },
+  note: {
+    fontSize: 12, color: "#8888AA", fontFamily: "Inter_400Regular",
+    marginHorizontal: 20, marginTop: -8, marginBottom: 16, lineHeight: 17,
   },
   ringCard: {
     flexDirection: "row", alignItems: "center",

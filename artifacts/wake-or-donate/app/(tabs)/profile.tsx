@@ -1,20 +1,20 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  Platform, Alert, TextInput, Modal, FlatList,
+  Platform, Alert, TextInput, Modal,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
-import { useAuth } from "@/context/AuthContext";
-import { router } from "expo-router";
+import * as Linking from "expo-linking";
+import Constants from "expo-constants";
+import { useAuth, publicPageUrl, BASE_URL } from "@/context/AuthContext";
+import { FavoriteCharitiesPicker, MAX_FAVORITES, type CharityInfo } from "@/components/FavoriteCharitiesPicker";
+import { confirmAction } from "@/lib/confirm";
+import { AlarmClock } from "@/modules/alarm-clock";
+import { router, useFocusEffect } from "expo-router";
 
-const CHARITIES = [
-  "Animal Shelter", "Red Cross", "UNICEF", "WWF", "Doctors Without Borders",
-  "Habitat for Humanity", "Save the Children", "Amnesty International",
-  "Greenpeace", "Food Bank",
-];
+const SUPPORT_EMAIL = "al.vl.kursov@gmail.com";
 
-const DEFAULT_CHARITY_OPTIONS = CHARITIES;
 
 function SectionHeader({ title }: { title: string }) {
   return <Text style={styles.sectionTitle}>{title}</Text>;
@@ -53,7 +53,11 @@ function Divider() {
 }
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, token, logout, deleteAccount } = useAuth();
+  const [showDelete, setShowDelete] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
   const insets = useSafeAreaInsets();
   const topPad = insets.top + (Platform.OS === "web" ? 67 : 0);
   const bottomPad = insets.bottom + (Platform.OS === "web" ? 34 : 84);
@@ -61,37 +65,66 @@ export default function ProfileScreen() {
   const [cardConnected, setCardConnected] = useState(false);
   const [donationAmount, setDonationAmount] = useState("5");
   const [snoozeLimit, setSnoozeLimit] = useState("3");
-  const [defaultCharity, setDefaultCharity] = useState("Animal Shelter");
   const [dailyLimit, setDailyLimit] = useState("20");
   const [monthlyLimit, setMonthlyLimit] = useState("200");
-  const [favoriteCharities, setFavoriteCharities] = useState<string[]>(["Animal Shelter"]);
-
-  const [showDefaultCharityPicker, setShowDefaultCharityPicker] = useState(false);
+  const [favoriteCharities, setFavoriteCharities] = useState<CharityInfo[]>([]);
+  // Re-checked whenever the profile is shown (the user may have changed settings meanwhile)
+  const [setupIncomplete, setSetupIncomplete] = useState(false);
+  useFocusEffect(useCallback(() => {
+    const status = AlarmClock?.getStatus();
+    setSetupIncomplete(!!status && (!status.notifications || !status.exactAlarms || !status.fullScreen
+      || status.overlay === false || status.batteryUnrestricted === false));
+  }, []));
   const [showFavoritePicker, setShowFavoritePicker] = useState(false);
 
-  const handleLogout = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out", style: "destructive", onPress: async () => {
-          await logout();
-          router.replace("/auth");
-        }
-      },
-    ]);
+  useEffect(() => {
+    if (!token) { setFavoriteCharities([]); return; }
+    fetch(`${BASE_URL}/charities/favorites`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => (r.ok ? r.json() : []))
+      .then(setFavoriteCharities)
+      .catch(() => {});
+  }, [token]);
+
+  const handleLogout = async () => {
+    if (!(await confirmAction("Sign Out", "Are you sure you want to sign out?", "Sign Out"))) return;
+    await logout();
+    router.replace("/auth");
   };
 
   const handleSignIn = () => router.replace("/auth");
 
-  const toggleFavorite = (charity: string) => {
-    setFavoriteCharities(prev => {
-      if (prev.includes(charity)) return prev.filter(c => c !== charity);
-      if (prev.length >= 3) {
-        Alert.alert("Limit reached", "You can only pick 3 favorite charities.");
-        return prev;
-      }
-      return [...prev, charity];
-    });
+  const closeDelete = () => {
+    setShowDelete(false);
+    setDeletePassword("");
+    setDeleteError("");
+  };
+
+  const confirmDelete = async () => {
+    if (!deletePassword) { setDeleteError("Enter your password"); return; }
+    setDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteAccount(deletePassword);
+      closeDelete();
+      router.replace("/auth");
+    } catch (e: any) {
+      setDeleteError(e?.message ?? "Could not delete account");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const openLegal = (label: string) => {
+    if (label === "Privacy Policy") Linking.openURL(publicPageUrl("/privacy"));
+    else if (label === "Contact Support") Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=WakeOrDonate%20support`);
+    else if (label === "Diagnostics") router.push("/diagnostics");
+    else if (label === "About") {
+      const engine = Platform.OS !== "android" ? "notifications" : AlarmClock ? "native alarm clock" : "MISSING — notifications fallback";
+      Alert.alert(
+        "WakeOrDonate",
+        `Version ${Constants.expoConfig?.version ?? "1.0.0"}\nAlarm engine: ${engine}\nPublished by Aleksandr Kursov`,
+      );
+    }
   };
 
   return (
@@ -110,7 +143,26 @@ export default function ProfileScreen() {
         <Row icon="mail" label="Email" value={user?.email ?? "—"} />
         <Divider />
         {user ? (
-          <Row icon="log-out" label="Sign Out" onPress={handleLogout} danger />
+          <>
+            <Row icon="help-circle" label="How it works" onPress={() => router.push("/welcome")} />
+            <Divider />
+            {Platform.OS === "android" && (
+              <>
+                <Row
+                  icon="bell"
+                  label="Alarm setup"
+                  onPress={() => router.push("/alarm-setup")}
+                  right={setupIncomplete ? (
+                    <View style={styles.setupBadge}><Text style={styles.setupBadgeText}>Needs attention</Text></View>
+                  ) : undefined}
+                />
+                <Divider />
+              </>
+            )}
+            <Row icon="log-out" label="Sign Out" onPress={handleLogout} danger />
+            <Divider />
+            <Row icon="trash-2" label="Delete Account" onPress={() => setShowDelete(true)} danger />
+          </>
         ) : (
           <Row icon="log-in" label="Sign In" onPress={handleSignIn} />
         )}
@@ -171,7 +223,7 @@ export default function ProfileScreen() {
                 selectTextOnFocus
               />
             </View>
-            <Text style={styles.rowValue}>₪</Text>
+            <Text style={styles.rowValue}>$</Text>
           </View>
         </View>
         <Divider />
@@ -193,16 +245,9 @@ export default function ProfileScreen() {
         <Divider />
         <Row
           icon="heart"
-          label="Default charity"
-          value={defaultCharity}
-          onPress={() => setShowDefaultCharityPicker(true)}
-        />
-        <Divider />
-        <Row
-          icon="star"
           label="Favorite charities"
-          value={favoriteCharities.length === 0 ? "Choose up to 3" : favoriteCharities.join(", ")}
-          onPress={() => setShowFavoritePicker(true)}
+          value={favoriteCharities.length === 0 ? `Choose up to ${MAX_FAVORITES}` : favoriteCharities.map(c => c.name).join(", ")}
+          onPress={() => (user ? setShowFavoritePicker(true) : router.replace("/auth"))}
         />
         <Divider />
         <View style={styles.row}>
@@ -218,7 +263,7 @@ export default function ProfileScreen() {
                 selectTextOnFocus
               />
             </View>
-            <Text style={styles.rowValue}>₪</Text>
+            <Text style={styles.rowValue}>$</Text>
           </View>
         </View>
         <Divider />
@@ -235,7 +280,7 @@ export default function ProfileScreen() {
                 selectTextOnFocus
               />
             </View>
-            <Text style={styles.rowValue}>₪</Text>
+            <Text style={styles.rowValue}>$</Text>
           </View>
         </View>
       </Card>
@@ -245,71 +290,57 @@ export default function ProfileScreen() {
       <Card>
         {[
           { label: "Privacy Policy", icon: "shield" },
-          { label: "Terms of Use", icon: "file-text" },
-          { label: "Donation Policy", icon: "gift" },
-          { label: "Refund Policy", icon: "refresh-cw" },
           { label: "About", icon: "info" },
+          { label: "Diagnostics", icon: "activity" },
           { label: "Contact Support", icon: "message-circle" },
         ].map((item, i, arr) => (
           <React.Fragment key={item.label}>
             <Row
               icon={item.icon}
               label={item.label}
-              onPress={() => Alert.alert(item.label, "Coming soon.")}
+              onPress={() => openLegal(item.label)}
             />
             {i < arr.length - 1 && <Divider />}
           </React.Fragment>
         ))}
       </Card>
 
-      {/* ── Default Charity Picker ── */}
-      <Modal visible={showDefaultCharityPicker} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowDefaultCharityPicker(false)}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Default Charity</Text>
-            <FlatList
-              data={DEFAULT_CHARITY_OPTIONS}
-              keyExtractor={i => i}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.pickerRow}
-                  onPress={() => { setDefaultCharity(item); setShowDefaultCharityPicker(false); }}
-                >
-                  <Text style={[styles.pickerText, item === defaultCharity && { color: "#FF5A3C" }]}>{item}</Text>
-                  {item === defaultCharity && <Feather name="check" size={16} color="#FF5A3C" />}
-                </TouchableOpacity>
-              )}
+      {/* ── Delete Account ── */}
+      <Modal visible={showDelete} transparent animationType="fade" onRequestClose={closeDelete}>
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteDialog}>
+            <Text style={styles.deleteTitle}>Delete account?</Text>
+            <Text style={styles.deleteText}>
+              This permanently deletes your profile, alarms, alarm history and donation records. It cannot be undone.
+            </Text>
+            <TextInput
+              style={styles.deleteInput}
+              placeholder="Your password"
+              placeholderTextColor="#8888AA"
+              secureTextEntry
+              value={deletePassword}
+              onChangeText={setDeletePassword}
+              autoFocus
             />
+            {!!deleteError && <Text style={styles.deleteError}>{deleteError}</Text>}
+            <View style={styles.deleteActions}>
+              <TouchableOpacity style={styles.deleteCancel} onPress={closeDelete} disabled={deleting}>
+                <Text style={styles.deleteCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.deleteConfirm} onPress={confirmDelete} disabled={deleting}>
+                <Text style={styles.deleteConfirmText}>{deleting ? "Deleting…" : "Delete"}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
-      {/* ── Favorite Charities Picker ── */}
-      <Modal visible={showFavoritePicker} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowFavoritePicker(false)}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>Favorite Charities (max 3)</Text>
-            <FlatList
-              data={CHARITIES}
-              keyExtractor={i => i}
-              renderItem={({ item }) => {
-                const selected = favoriteCharities.includes(item);
-                return (
-                  <TouchableOpacity style={styles.pickerRow} onPress={() => toggleFavorite(item)}>
-                    <Text style={[styles.pickerText, selected && { color: "#FF5A3C" }]}>{item}</Text>
-                    {selected && <Feather name="check" size={16} color="#FF5A3C" />}
-                  </TouchableOpacity>
-                );
-              }}
-            />
-            <TouchableOpacity style={styles.doneBtn} onPress={() => setShowFavoritePicker(false)}>
-              <Text style={styles.doneBtnText}>Done</Text>
-            </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
-      </Modal>
+      <FavoriteCharitiesPicker
+        visible={showFavoritePicker}
+        selectedIds={favoriteCharities.map(c => c.id)}
+        onClose={() => setShowFavoritePicker(false)}
+        onSaved={setFavoriteCharities}
+      />
     </ScrollView>
   );
 }
@@ -376,4 +407,20 @@ const styles = StyleSheet.create({
     margin: 16, backgroundColor: "#FF5A3C", borderRadius: 14, padding: 14, alignItems: "center",
   },
   doneBtnText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#FFF" },
+  deleteOverlay: { flex: 1, backgroundColor: "#000000AA", justifyContent: "center", padding: 24 },
+  deleteDialog: { backgroundColor: "#1C1C2E", borderRadius: 20, padding: 20, gap: 12, borderWidth: 1, borderColor: "#2A2A40" },
+  deleteTitle: { fontSize: 20, fontFamily: "Inter_700Bold", color: "#F0F0FF" },
+  deleteText: { fontSize: 14, fontFamily: "Inter_400Regular", color: "#8888AA", lineHeight: 20 },
+  deleteInput: {
+    backgroundColor: "#141420", borderRadius: 12, borderWidth: 1, borderColor: "#2A2A40",
+    paddingHorizontal: 14, paddingVertical: 12, color: "#F0F0FF", fontFamily: "Inter_400Regular", fontSize: 15,
+  },
+  deleteError: { fontSize: 13, fontFamily: "Inter_500Medium", color: "#FF453A" },
+  deleteActions: { flexDirection: "row", gap: 10, marginTop: 4 },
+  deleteCancel: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: "#2A2A40", alignItems: "center" },
+  deleteCancelText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#F0F0FF" },
+  deleteConfirm: { flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: "#FF453A", alignItems: "center" },
+  deleteConfirmText: { fontSize: 15, fontFamily: "Inter_600SemiBold", color: "#fff" },
+  setupBadge: { backgroundColor: "#FF453A22", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 },
+  setupBadgeText: { fontSize: 12, fontFamily: "Inter_600SemiBold", color: "#FF453A" },
 });

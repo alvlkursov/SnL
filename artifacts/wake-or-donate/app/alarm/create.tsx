@@ -6,7 +6,10 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 import { useAlarms } from "@/context/AlarmContext";
+import { WakeCodeRow } from "@/components/WakeCodeRow";
+import { getWakeCode } from "@/lib/wakeCode";
 import { useAuth, BASE_URL } from "@/context/AuthContext";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -41,6 +44,13 @@ export default function CreateAlarmScreen() {
   const [charityCategory, setCharityCategory] = useState<"favorite" | "recommended" | "hated">("recommended");
   const [selectedCharityId, setSelectedCharityId] = useState<number | null>(null);
   const [confirmMethod, setConfirmMethod] = useState<"button" | "math" | "shake" | "qr">("button");
+  // QR alarms need a code to scan: ask for one right away if none is saved yet
+  const pickConfirmMethod = (method: typeof confirmMethod) => {
+    setConfirmMethod(method);
+    if (method === "qr" && Platform.OS !== "web") {
+      getWakeCode().then(code => { if (!code) router.push("/wake-code"); });
+    }
+  };
   const [snoozeEnabled, setSnoozeEnabled] = useState(true);
   const [snoozeDuration, setSnoozeDuration] = useState("5");
 
@@ -51,9 +61,7 @@ export default function CreateAlarmScreen() {
   const fetchCharities = async () => {
     if (!token) return;
     try {
-      const url = charityCategory === "favorite"
-        ? `${BASE_URL}/charities`
-        : `${BASE_URL}/charities?category=${charityCategory}`;
+      const url = `${BASE_URL}/charities?category=${charityCategory}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (res.ok) {
         const data = await res.json();
@@ -99,7 +107,7 @@ export default function CreateAlarmScreen() {
         snoozeEnabled,
         snoozeDurationMinutes: parseInt(snoozeDuration) || 5,
       });
-      router.back();
+      closeScreen();
     } catch (e: any) {
       Alert.alert("Error", e.message ?? "Failed to create alarm");
     } finally {
@@ -114,7 +122,7 @@ export default function CreateAlarmScreen() {
     <View style={[styles.container, { paddingTop: topPad }]}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+        <TouchableOpacity onPress={closeScreen} style={styles.closeBtn}>
           <Feather name="x" size={22} color="#F0F0FF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>New Alarm</Text>
@@ -236,10 +244,20 @@ export default function CreateAlarmScreen() {
           </View>
 
           {/* Charity list */}
+          {charityCategory === "favorite" && charities.length === 0 && (
+            <TouchableOpacity style={{ marginTop: 10 }} onPress={() => router.push("/(tabs)/profile")}>
+              <Text style={{ fontSize: 13, color: "#8888AA", fontFamily: "Inter_400Regular" }}>
+                You haven't picked favorites yet — until you do, donations go to a featured charity.{" "}
+                <Text style={{ color: "#30D158" }}>Choose favorites in Profile →</Text>
+              </Text>
+            </TouchableOpacity>
+          )}
           {charities.length > 0 && (
             <View style={styles.charityList}>
               <Text style={styles.charityListLabel}>
-                {charityCategory === "favorite" ? "All charities (choose one)" : "Select specific charity (optional)"}
+                {charityCategory === "favorite"
+                  ? "Your favorites (optional — otherwise rotates between them)"
+                  : "Select specific charity (optional)"}
               </Text>
               {charities.map((c) => (
                 <TouchableOpacity
@@ -266,7 +284,7 @@ export default function CreateAlarmScreen() {
               <TouchableOpacity
                 key={m.key}
                 style={[styles.confirmBtn, confirmMethod === m.key && styles.confirmBtnActive]}
-                onPress={() => setConfirmMethod(m.key as any)}
+                onPress={() => pickConfirmMethod(m.key as any)}
               >
                 <MaterialCommunityIcons
                   name={m.icon as any}
@@ -278,6 +296,7 @@ export default function CreateAlarmScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          {confirmMethod === "qr" && <WakeCodeRow />}
         </View>
 
         {/* Snooze */}

@@ -1,0 +1,108 @@
+import { useEffect, useRef } from "react";
+import { AppState, Platform } from "react-native";
+import * as Notifications from "expo-notifications";
+import { router } from "expo-router";
+import { useAuth, reportTimezone } from "@/context/AuthContext";
+import { useAlarms } from "@/context/AlarmContext";
+import { isAlarmData, setupAlarmNotifications, ALARM_SETUP_SEEN_KEY } from "@/lib/alarmNotifications";
+import { ringingAlarm } from "@/lib/ringingState";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AlarmClock } from "@/modules/alarm-clock";
+
+// Ignore taps on notifications older than this (e.g. a stale one restored after restart)
+const MAX_RESPONSE_AGE_MS = 30 * 60_000;
+
+function openRingScreen(alarmId: number, at?: number, ringInApp = false) {
+  if (ringingAlarm.id === alarmId) return;
+  ringingAlarm.id = alarmId;
+  const params: Record<string, string | number> = { id: alarmId };
+  if (at) params.at = at;
+  if (ringInApp) params.sound = "app";
+  router.push({ pathname: "/alarm/active", params });
+}
+
+/** Opens the ring screen when the user taps an alarm notification (also on cold start). Native only. */
+function NotificationTapHandler() {
+  const lastResponse = Notifications.useLastNotificationResponse();
+  const handledResponses = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!lastResponse) return;
+    const { request, date } = lastResponse.notification;
+    const { identifier, content } = request;
+    if (handledResponses.current.has(identifier)) return;
+    handledResponses.current.add(identifier);
+    if (isAlarmData(content.data) && Date.now() - date < MAX_RESPONSE_AGE_MS) {
+      openRingScreen(content.data.alarmId);
+    }
+  }, [lastResponse]);
+
+  return null;
+}
+
+/** Background glue: permissions, opening the ring screen from notifications, and showing missed alarms. */
+export function AlarmRuntime() {
+  const { token, user } = useAuth();
+  const { fetchAlarms, fetchMissedEvents } = useAlarms();
+
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      await setupAlarmNotifications().catch(() => {});
+      // Walk the user through alarm permissions once; afterwards it lives in Profile > Alarm setup
+      if (Platform.OS !== "android") return;
+      const seen = await AsyncStorage.getItem(ALARM_SETUP_SEEN_KEY).catch(() => "1");
+      if (!seen && ringingAlarm.id === null) router.push("/alarm-setup");
+    })();
+  }, [token]);
+
+  // An alarm fired while the app is open: go straight to the ring screen
+  useEffect(() => {
+    if (Platform.OS === "web" || !user) return;
+    const sub = Notifications.addNotificationReceivedListener(notification => {
+      const data = notification.request.content.data;
+      if (isAlarmData(data)) openRingScreen(data.alarmId);
+    });
+    return () => sub.remove();
+  }, [user]);
+
+  // Native alarm clock fired while the app is on screen: switch to the ring screen right away
+  // and ring from there instead of the tray notification
+  useEffect(() => {
+    if (!AlarmClock || !user) return;
+    const sub = AlarmClock.addListener("onRing", ({ alarmId, at }) => {
+      AlarmClock?.ackRing?.(alarmId);
+      openRingScreen(alarmId, at, true);
+    });
+    return () => sub.remove();
+  }, [user]);
+
+  // On every return to the app: refresh alarms (re-syncs the schedule) and surface misses
+  useEffect(() => {
+    if (!user) return;
+    const check = async () => {
+      if (token) reportTimezone(token); // travel or DST: alarms are judged in local time
+      fetchAlarms();
+      const missed = await fetchMissedEvents();
+      const first = missed[0];
+      if (!first || ringingAlarm.id !== null) return;
+      router.push({
+        pathname: "/alarm/missed",
+        params: {
+          eventId: first.id,
+          amount: String(first.amount ?? 0),
+          fund: first.charityName ?? "",
+          label: first.label,
+          category: first.charityCategory ?? "",
+          donationId: first.donationId ? String(first.donationId) : "",
+        },
+      });
+    };
+    check();
+    const sub = AppState.addEventListener("change", state => { if (state === "active") check(); });
+    return () => sub.remove();
+  }, [user?.id]);
+
+  // Notification APIs don't exist in the web preview
+  return Platform.OS === "web" || !user ? null : <NotificationTapHandler />;
+}

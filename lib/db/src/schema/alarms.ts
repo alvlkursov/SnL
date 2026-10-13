@@ -19,8 +19,9 @@ export const alarmsTable = pgTable("alarms", {
   snoozeCount: integer("snooze_count").notNull().default(0),
   snoozeDurationMinutes: integer("snooze_duration_minutes").notNull().default(5),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
-export const insertAlarmSchema = createInsertSchema(alarmsTable).omit({ id: true, createdAt: true, snoozeCount: true });
+export const insertAlarmSchema = createInsertSchema(alarmsTable).omit({ id: true, createdAt: true, updatedAt: true, snoozeCount: true });
 export type InsertAlarm = z.infer<typeof insertAlarmSchema>;
 export type Alarm = typeof alarmsTable.$inferSelect;

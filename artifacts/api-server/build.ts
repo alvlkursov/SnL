@@ -2,6 +2,16 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { build as esbuild } from "esbuild";
 import { rm, readFile } from "fs/promises";
+import { execSync } from "child_process";
+
+// Stamp the bundle so GET /api/version shows which code is actually deployed
+function gitCommit(): string {
+  try {
+    return execSync("git rev-parse --short HEAD", { cwd: __dirname }).toString().trim();
+  } catch {
+    return "unknown";
+  }
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -62,6 +72,8 @@ async function buildAll() {
     outfile: path.resolve(distDir, "index.cjs"),
     define: {
       "process.env.NODE_ENV": '"production"',
+      "process.env.BUILD_COMMIT": JSON.stringify(gitCommit()),
+      "process.env.BUILD_TIME": JSON.stringify(new Date().toISOString()),
     },
     minify: true,
     external: externals,

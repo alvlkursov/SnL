@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/context/AuthContext";
 import { AlarmProvider } from "@/context/AlarmContext";
+import { AlarmRuntime } from "@/components/AlarmRuntime";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,6 +27,8 @@ function RootLayoutNav() {
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="auth" options={{ headerShown: false }} />
+      <Stack.Screen name="welcome" options={{ presentation: "fullScreenModal", headerShown: false, gestureEnabled: false }} />
+      <Stack.Screen name="forgot-password" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm/[id]" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm/create" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm/active" options={{ presentation: "fullScreenModal", headerShown: false }} />
@@ -33,6 +36,9 @@ function RootLayoutNav() {
       <Stack.Screen name="alarm/snooze-charge" options={{ presentation: "modal", headerShown: false }} />
       <Stack.Screen name="alarm/woke-up" options={{ presentation: "fullScreenModal", headerShown: false }} />
       <Stack.Screen name="alarm/receipt" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="alarm-setup" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="wake-code" options={{ presentation: "modal", headerShown: false }} />
+      <Stack.Screen name="diagnostics" options={{ presentation: "modal", headerShown: false }} />
     </Stack>
   );
 }
@@ -62,6 +68,7 @@ export default function RootLayout() {
               <AuthProvider>
                 <AlarmProvider>
                   <RootLayoutNav />
+                  <AlarmRuntime />
                 </AlarmProvider>
               </AuthProvider>
             </KeyboardProvider>

@@ -1,46 +1,76 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { charitiesTable } from "@workspace/db/schema";
-import { eq } from "drizzle-orm";
+import { charitiesTable, userFavoriteCharitiesTable } from "@workspace/db/schema";
+import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { authMiddleware, getUserId } from "../lib/auth.js";
+import { syncCharityCatalog } from "../lib/charityCatalog.js";
+import { parseBody, setFavoritesSchema } from "../lib/validation.js";
+import { MAX_FAVORITE_CHARITIES } from "../lib/rules.js";
 
 const router = Router();
 
-// Seed default charities if none exist
-async function seedCharities() {
-  const existing = await db.select().from(charitiesTable).limit(1);
-  if (existing.length > 0) return;
+syncCharityCatalog().catch(e => console.error("charity catalog sync failed", e));
 
-  await db.insert(charitiesTable).values([
-    // Recommended (hot)
-    { name: "WWF", description: "World Wildlife Fund — защита дикой природы", category: "recommended", isHot: true },
-    { name: "UNICEF", description: "Помощь детям по всему миру", category: "recommended", isHot: true },
-    { name: "Красный Крест", description: "Гуманитарная помощь в зонах кризиса", category: "recommended", isHot: false },
-    { name: "Врачи без границ", description: "Медицинская помощь в горячих точках", category: "recommended", isHot: false },
-    { name: "Save the Children", description: "Защита прав детей", category: "recommended", isHot: false },
-    // Hated
-    { name: "Anonymous Corp Lobby", description: "Лоббирование корпоративных интересов", category: "hated", isHot: false },
-    { name: "Anti-Vax Foundation", description: "Распространение антипрививочной пропаганды", category: "hated", isHot: false },
-    { name: "Flat Earth Society", description: "Продвижение псевдонаучных теорий", category: "hated", isHot: false },
-    { name: "Spam Political PAC", description: "Спам-политическая организация", category: "hated", isHot: false },
-    { name: "Fossil Fuel Lobby", description: "Лоббирование интересов нефтяной промышленности", category: "hated", isHot: false },
-  ]);
+async function favoritesOf(userId: number) {
+  const rows = await db.select({ charity: charitiesTable })
+    .from(userFavoriteCharitiesTable)
+    .innerJoin(charitiesTable, eq(userFavoriteCharitiesTable.charityId, charitiesTable.id))
+    .where(eq(userFavoriteCharitiesTable.userId, userId))
+    .orderBy(asc(charitiesTable.name));
+  return rows.map(r => r.charity);
 }
 
-seedCharities().catch(console.error);
+// The user's favorites (alarms with category 'favorite' donate to one of these)
+router.get("/favorites", authMiddleware, async (req, res) => {
+  res.json(await favoritesOf(getUserId(req)));
+});
 
-router.get("/", async (req, res) => {
-  try {
-    const { category } = req.query;
-    let charities;
-    if (category && category !== "favorite") {
-      charities = await db.select().from(charitiesTable).where(eq(charitiesTable.category, String(category)));
-    } else {
-      charities = await db.select().from(charitiesTable);
-    }
-    res.json(charities);
-  } catch (e) {
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
+router.put("/favorites", authMiddleware, async (req, res) => {
+  const body = parseBody(setFavoritesSchema, req, res);
+  if (!body) return;
+  const userId = getUserId(req);
+  const ids = [...new Set(body.charityIds)];
+  if (ids.length > MAX_FAVORITE_CHARITIES) {
+    res.status(400).json({ error: "Bad Request", message: `Pick up to ${MAX_FAVORITE_CHARITIES} favorite charities` });
+    return;
   }
+  const valid = ids.length
+    ? await db.select({ id: charitiesTable.id }).from(charitiesTable)
+      .where(and(inArray(charitiesTable.id, ids), ne(charitiesTable.category, "hated")))
+    : [];
+  if (valid.length !== ids.length) {
+    res.status(400).json({ error: "Bad Request", message: "Unknown charity" });
+    return;
+  }
+  await db.transaction(async (tx) => {
+    await tx.delete(userFavoriteCharitiesTable).where(eq(userFavoriteCharitiesTable.userId, userId));
+    if (ids.length) {
+      await tx.insert(userFavoriteCharitiesTable).values(ids.map(charityId => ({ userId, charityId })));
+    }
+  });
+  res.json(await favoritesOf(userId));
+});
+
+// ?category=recommended | hated | catalog (everything except hated) | favorite (needs auth)
+router.get("/", async (req, res, next) => {
+  const category = String(req.query.category ?? "");
+  if (category === "favorite") {
+    authMiddleware(req, res, async () => {
+      try {
+        res.json(await favoritesOf(getUserId(req)));
+      } catch (e) {
+        next(e);
+      }
+    });
+    return;
+  }
+  const query = db.select().from(charitiesTable);
+  const charities = category === "catalog"
+    ? await query.where(ne(charitiesTable.category, "hated")).orderBy(asc(charitiesTable.cause), asc(charitiesTable.name))
+    : category
+      ? await query.where(eq(charitiesTable.category, category)).orderBy(desc(charitiesTable.isHot), asc(charitiesTable.name))
+      : await query.orderBy(asc(charitiesTable.name));
+  res.json(charities);
 });
 
 export default router;

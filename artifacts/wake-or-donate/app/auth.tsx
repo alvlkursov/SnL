@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator,
@@ -6,7 +6,9 @@ import {
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useAuth } from "@/context/AuthContext";
+import { WELCOME_SEEN_KEY } from "@/lib/onboarding";
 
 export default function AuthScreen() {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -19,10 +21,21 @@ export default function AuthScreen() {
   const { login, register } = useAuth();
   const insets = useSafeAreaInsets();
 
+  // First launch: explain the idea before asking for an account
+  useEffect(() => {
+    AsyncStorage.getItem(WELCOME_SEEN_KEY)
+      .then(seen => { if (!seen) router.push("/welcome"); })
+      .catch(() => {});
+  }, []);
+
   const handleSubmit = async () => {
     setError("");
     if (!email || !password || (mode === "register" && !name)) {
       setError("Please fill in all fields");
+      return;
+    }
+    if (mode === "register" && password.length < 8) {
+      setError("Password must be at least 8 characters");
       return;
     }
     setLoading(true);
@@ -114,6 +127,15 @@ export default function AuthScreen() {
               </TouchableOpacity>
             </View>
 
+            {mode === "login" && (
+              <TouchableOpacity
+                style={styles.forgotLink}
+                onPress={() => router.push({ pathname: "/forgot-password", params: { email: email.trim() } })}
+              >
+                <Text style={styles.forgotText}>Forgot password?</Text>
+              </TouchableOpacity>
+            )}
+
             {error ? (
               <View style={styles.errorBox}>
                 <Feather name="alert-circle" size={14} color="#FF453A" />
@@ -188,6 +210,8 @@ const styles = StyleSheet.create({
   inputIcon: { marginRight: 10 },
   input: { flex: 1, height: 52, color: "#F0F0FF", fontFamily: "Inter_400Regular", fontSize: 15 },
   eyeIcon: { padding: 8 },
+  forgotLink: { alignSelf: "flex-end", paddingVertical: 2 },
+  forgotText: { color: "#FF5A3C", fontSize: 14, fontFamily: "Inter_500Medium" },
   errorBox: { flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#2A1215", borderRadius: 8, padding: 12 },
   errorText: { color: "#FF453A", fontSize: 13, fontFamily: "Inter_400Regular", flex: 1 },
   submitBtn: {

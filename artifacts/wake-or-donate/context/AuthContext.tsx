@@ -1,9 +1,38 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const BASE_URL = process.env.EXPO_PUBLIC_DOMAIN
-  ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
-  : "/api";
+import { cancelAllAlarmNotifications } from "@/lib/alarmNotifications";
+
+// Standalone builds point at the deployed server; Replit dev uses its dev domain
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL
+  ? process.env.EXPO_PUBLIC_API_URL.replace(/\/$/, "")
+  : process.env.EXPO_PUBLIC_DOMAIN
+    ? `https://${process.env.EXPO_PUBLIC_DOMAIN}/api`
+    : "/api";
+
+/** IANA timezone of the phone; falls back to a fixed-offset zone if Intl can't tell. */
+export function deviceTimezone(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (tz) return tz;
+  } catch {}
+  const offsetMin = -new Date().getTimezoneOffset();
+  if (offsetMin % 60 !== 0) return "UTC";
+  const hours = offsetMin / 60;
+  // Etc/GMT zones have inverted signs: UTC+3 is "Etc/GMT-3"
+  return hours === 0 ? "UTC" : `Etc/GMT${hours > 0 ? "-" : "+"}${Math.abs(hours)}`;
+}
+
+// Alarms are evaluated server-side in the user's local time, so keep it current
+export async function reportTimezone(token: string) {
+  try {
+    await fetch(`${BASE_URL}/auth/me`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ timezone: deviceTimezone() }),
+    });
+  } catch {}
+}
 
 export interface User {
   id: number;
@@ -23,7 +52,10 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   refreshUser: () => Promise<void>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  resetPassword: (email: string, code: string, password: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -53,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             const userData = await res.json();
             setUser(userData);
             await AsyncStorage.setItem("auth_user", JSON.stringify(userData));
+            reportTimezone(storedToken);
           } else {
             // Token expired
             await clearAuth();
@@ -86,6 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error(err.message ?? "Login failed");
     }
     const { user: userData, token: newToken } = await res.json();
+    reportTimezone(newToken);
     setUser(userData);
     setToken(newToken);
     await AsyncStorage.setItem("auth_token", newToken);
@@ -96,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await fetch(`${BASE_URL}/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password, name }),
+      body: JSON.stringify({ email, password, name, timezone: deviceTimezone() }),
     });
     if (!res.ok) {
       const err = await res.json();
@@ -109,16 +143,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await AsyncStorage.setItem("auth_user", JSON.stringify(userData));
   }
 
+  // Signs out locally right away; server/alarm cleanup must never block it
   async function logout() {
-    if (token) {
-      try {
-        await fetch(`${BASE_URL}/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      } catch {}
-    }
+    const oldToken = token;
     await clearAuth();
+    cancelAllAlarmNotifications().catch(() => {});
+    if (oldToken) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      fetch(`${BASE_URL}/auth/logout`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${oldToken}` },
+        signal: controller.signal,
+      }).catch(() => {}).finally(() => clearTimeout(timer));
+    }
+  }
+
+  async function deleteAccount(password: string) {
+    const res = await fetch(`${BASE_URL}/auth/me`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message ?? "Could not delete account");
+    }
+    await cancelAllAlarmNotifications();
+    await clearAuth();
+  }
+
+  // Emails a 6-digit code (the server answers the same whether or not the account exists)
+  async function requestPasswordReset(email: string) {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message ?? "Could not send the code");
+    }
+  }
+
+  // Sets the new password and signs in; other devices are signed out
+  async function resetPassword(email: string, code: string, password: string) {
+    const res = await fetch(`${BASE_URL}/auth/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, code, password }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.message ?? "Could not reset the password");
+    }
+    const { user: userData, token: newToken } = await res.json();
+    reportTimezone(newToken);
+    setUser(userData);
+    setToken(newToken);
+    await AsyncStorage.setItem("auth_token", newToken);
+    await AsyncStorage.setItem("auth_user", JSON.stringify(userData));
   }
 
   async function refreshUser() {
@@ -136,7 +220,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, register, logout, deleteAccount, refreshUser, requestPasswordReset, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );
@@ -146,6 +230,14 @@ export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
+}
+
+/** Absolute URL of a public page served by the API server (privacy policy etc.). */
+export function publicPageUrl(path: string): string {
+  const base = BASE_URL.startsWith("/") && typeof window !== "undefined" && window.location
+    ? `${window.location.origin}${BASE_URL}`
+    : BASE_URL;
+  return `${base}${path}`;
 }
 
 export { BASE_URL };

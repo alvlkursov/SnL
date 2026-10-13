@@ -1,0 +1,1 @@
+- [GitHub sync through Replit](github-sync.md) — the connector authorizes REST writes, not container Git push; REST file commits do not publish local commit history.

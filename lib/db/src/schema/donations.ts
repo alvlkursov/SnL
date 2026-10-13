@@ -8,11 +8,11 @@ import { charitiesTable } from "./charities";
 export const donationsTable = pgTable("donations", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => usersTable.id, { onDelete: "cascade" }),
-  alarmId: integer("alarm_id").notNull().references(() => alarmsTable.id, { onDelete: "cascade" }),
+  alarmId: integer("alarm_id").references(() => alarmsTable.id, { onDelete: "set null" }), // null for voluntary; history survives alarm deletion
   charityId: integer("charity_id").notNull().references(() => charitiesTable.id),
   charityName: text("charity_name").notNull(),
   amount: real("amount").notNull(),
-  reason: text("reason").notNull(), // 'snooze' | 'missed'
+  reason: text("reason").notNull(), // 'snooze' | 'missed' | 'voluntary'
   status: text("status").notNull().default("completed"), // 'pending' | 'completed' | 'failed'
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

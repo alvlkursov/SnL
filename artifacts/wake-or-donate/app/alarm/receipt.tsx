@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { goHome } from "@/lib/navigation";
 
 function ListRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
@@ -23,15 +24,16 @@ export default function DonationReceiptScreen() {
     category = "Favorite",
     reason = "Missed alarm",
     voluntary = "false",
+    donationId = "",
   } = useLocalSearchParams<{
-    amount?: string; fund?: string; category?: string; reason?: string; voluntary?: string;
+    amount?: string; fund?: string; category?: string; reason?: string; voluntary?: string; donationId?: string;
   }>();
 
   const isVoluntary = voluntary === "true";
   const now = new Date();
   const dateStr = now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const timeStr = now.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const ref = "WD-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+  const ref = donationId ? `WD-${donationId.padStart(6, "0")}` : "—";
 
   const categoryColor =
     category === "Favorite" ? "#30D158" :
@@ -48,7 +50,7 @@ export default function DonationReceiptScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity onPress={goHome} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
           <Feather name="x" size={22} color="#8888AA" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Receipt</Text>
@@ -63,7 +65,7 @@ export default function DonationReceiptScreen() {
         <Text style={styles.highlightLabel}>
           {isVoluntary ? "Voluntary Donation" : "Donation Processed"}
         </Text>
-        <Text style={styles.highlightAmount}>₪{amount}</Text>
+        <Text style={styles.highlightAmount}>${amount}</Text>
         <Text style={styles.highlightFund}>to {fund}</Text>
         <View style={styles.statusBadge}>
           <View style={styles.statusDot} />
@@ -106,7 +108,7 @@ export default function DonationReceiptScreen() {
       {/* Done */}
       <TouchableOpacity
         style={styles.doneBtn}
-        onPress={() => router.back()}
+        onPress={goHome}
         activeOpacity={0.8}
       >
         <Text style={styles.doneBtnText}>Done</Text>

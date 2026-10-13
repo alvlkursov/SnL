@@ -1,149 +1,224 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { alarmsTable, donationsTable, usersTable, charitiesTable } from "@workspace/db/schema";
-import { eq, and } from "drizzle-orm";
-import { authMiddleware } from "../lib/auth.js";
+import { alarmsTable, alarmEventsTable, donationsTable, usersTable, type Alarm } from "@workspace/db/schema";
+import { eq, and, desc, lt, sql } from "drizzle-orm";
+import { authMiddleware, getUserId } from "../lib/auth.js";
+import { parseBody, parseId, createAlarmSchema, updateAlarmSchema, ringActionSchema } from "../lib/validation.js";
+import { findCurrentEvent, currentStreak, catchUpAlarms } from "../lib/events.js";
+import { localParts } from "../lib/time.js";
+import { resolveCharity, recordDonation } from "../lib/donations.js";
+import { MAX_SNOOZES, RING_WINDOW_MINUTES, minutes } from "../lib/rules.js";
 
 const router = Router();
 router.use(authMiddleware);
 
+function toApi(alarm: Alarm) {
+  return { ...alarm, days: JSON.parse(alarm.days) as number[] };
+}
+
+async function findOwnAlarm(id: number, userId: number) {
+  const [alarm] = await db.select().from(alarmsTable)
+    .where(and(eq(alarmsTable.id, id), eq(alarmsTable.userId, userId))).limit(1);
+  return alarm;
+}
+
 router.get("/", async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const alarms = await db.select().from(alarmsTable).where(eq(alarmsTable.userId, userId));
-    res.json(alarms.map(a => ({ ...a, days: JSON.parse(a.days) })));
-  } catch (e) {
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
-  }
+  const alarms = await db.select().from(alarmsTable).where(eq(alarmsTable.userId, getUserId(req)));
+  res.json(alarms.map(toApi));
 });
 
 router.post("/", async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const { label, time, days, donationAmount, charityId, charityCategory, confirmationMethod, snoozeEnabled, snoozeDurationMinutes } = req.body;
-    const [alarm] = await db.insert(alarmsTable).values({
-      userId,
-      label,
-      time,
-      days: JSON.stringify(days),
-      donationAmount,
-      charityId: charityId ?? null,
-      charityCategory: charityCategory ?? null,
-      confirmationMethod,
-      snoozeEnabled,
-      snoozeDurationMinutes,
-    }).returning();
-    res.status(201).json({ ...alarm, days: JSON.parse(alarm.days) });
-  } catch (e) {
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
-  }
+  const body = parseBody(createAlarmSchema, req, res);
+  if (!body) return;
+  const [alarm] = await db.insert(alarmsTable).values({
+    ...body,
+    userId: getUserId(req),
+    days: JSON.stringify(body.days),
+  }).returning();
+  res.status(201).json(toApi(alarm));
 });
 
 router.put("/:id", async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const id = parseInt(req.params.id);
-    const body = { ...req.body };
-    if (body.days) body.days = JSON.stringify(body.days);
-    const [alarm] = await db.update(alarmsTable)
-      .set(body)
-      .where(and(eq(alarmsTable.id, id), eq(alarmsTable.userId, userId)))
-      .returning();
+  const id = parseId(req.params.id, res);
+  if (id === null) return;
+  const body = parseBody(updateAlarmSchema, req, res);
+  if (!body) return;
+  const { days, ...rest } = body;
+  const changes = { ...rest, ...(days ? { days: JSON.stringify(days) } : {}) };
+  if (Object.keys(changes).length === 0) {
+    const alarm = await findOwnAlarm(id, getUserId(req));
     if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }
-    res.json({ ...alarm, days: JSON.parse(alarm.days) });
-  } catch (e) {
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
+    res.json(toApi(alarm));
+    return;
   }
+  const [alarm] = await db.update(alarmsTable)
+    .set({ ...changes, updatedAt: new Date() })
+    .where(and(eq(alarmsTable.id, id), eq(alarmsTable.userId, getUserId(req))))
+    .returning();
+  if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }
+  res.json(toApi(alarm));
 });
 
 router.delete("/:id", async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const id = parseInt(req.params.id);
-    await db.delete(alarmsTable).where(and(eq(alarmsTable.id, id), eq(alarmsTable.userId, userId)));
-    res.json({ success: true, message: "Alarm deleted" });
-  } catch (e) {
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
-  }
+  const id = parseId(req.params.id, res);
+  if (id === null) return;
+  await db.delete(alarmsTable).where(and(eq(alarmsTable.id, id), eq(alarmsTable.userId, getUserId(req))));
+  res.json({ success: true, message: "Alarm deleted" });
+});
+
+async function userTimezone(userId: number): Promise<string> {
+  const [user] = await db.select({ timezone: usersTable.timezone }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  return user?.timezone ?? "UTC";
+}
+
+// What the server sees for this user: timezone, its idea of local time, recent rings
+router.get("/diagnostics", async (req, res) => {
+  const userId = getUserId(req);
+  const tz = await userTimezone(userId);
+  const now = new Date();
+  const recent = await db.select({
+    alarmId: alarmEventsTable.alarmId,
+    label: alarmsTable.label,
+    scheduledAt: alarmEventsTable.scheduledAt,
+    status: alarmEventsTable.status,
+    snoozesUsed: alarmEventsTable.snoozesUsed,
+  }).from(alarmEventsTable)
+    .innerJoin(alarmsTable, eq(alarmEventsTable.alarmId, alarmsTable.id))
+    .where(eq(alarmEventsTable.userId, userId))
+    .orderBy(desc(alarmEventsTable.scheduledAt)).limit(10);
+  res.json({ timezone: tz, serverNow: now, serverLocalTime: localParts(now, tz), recentRings: recent });
+});
+
+// Unacknowledged misses, so the app can show the "Alarm missed" screen on next open
+router.get("/events/missed", async (req, res) => {
+  await catchUpAlarms();
+  const rows = await db.select({
+    id: alarmEventsTable.id,
+    alarmId: alarmEventsTable.alarmId,
+    label: alarmsTable.label,
+    scheduledAt: alarmEventsTable.scheduledAt,
+    amount: donationsTable.amount,
+    charityName: donationsTable.charityName,
+    charityCategory: alarmsTable.charityCategory,
+    donationId: donationsTable.id,
+  })
+    .from(alarmEventsTable)
+    .innerJoin(alarmsTable, eq(alarmEventsTable.alarmId, alarmsTable.id))
+    .leftJoin(donationsTable, eq(alarmEventsTable.missedDonationId, donationsTable.id))
+    .where(and(
+      eq(alarmEventsTable.userId, getUserId(req)),
+      eq(alarmEventsTable.status, "missed"),
+      eq(alarmEventsTable.acknowledged, false),
+    ))
+    .orderBy(desc(alarmEventsTable.scheduledAt));
+  res.json(rows);
+});
+
+router.post("/events/:eventId/ack", async (req, res) => {
+  const eventId = parseId(req.params.eventId, res);
+  if (eventId === null) return;
+  await db.update(alarmEventsTable).set({ acknowledged: true })
+    .where(and(eq(alarmEventsTable.id, eventId), eq(alarmEventsTable.userId, getUserId(req))));
+  res.json({ success: true });
 });
 
 router.post("/:id/dismiss", async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const id = parseInt(req.params.id);
-    const [alarm] = await db.select().from(alarmsTable).where(and(eq(alarmsTable.id, id), eq(alarmsTable.userId, userId))).limit(1);
-    if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }
-    await db.update(usersTable).set({
-      alarmsDismissed: (await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1))[0].alarmsDismissed + 1,
-      alarmsTriggered: (await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1))[0].alarmsTriggered + 1,
-    }).where(eq(usersTable.id, userId));
-    res.json({ success: true, donated: false, message: "Alarm dismissed. Great job waking up!" });
-  } catch (e) {
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
+  const id = parseId(req.params.id, res);
+  if (id === null) return;
+  const userId = getUserId(req);
+  const alarm = await findOwnAlarm(id, userId);
+  if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }
+
+  const body = parseBody(ringActionSchema, req, res);
+  if (!body) return;
+  const reportedRingAt = body.ringAt ? new Date(body.ringAt) : undefined;
+  const event = await findCurrentEvent(alarm, await userTimezone(userId), new Date(), reportedRingAt);
+  if (!event) {
+    res.json({ success: true, donated: false, test: true, streak: await currentStreak(userId), message: "Test alarm dismissed" });
+    return;
   }
+  await db.transaction(async (tx) => {
+    const [claimed] = await tx.update(alarmEventsTable)
+      .set({ status: "dismissed", resolvedAt: new Date() })
+      .where(and(eq(alarmEventsTable.id, event.id), eq(alarmEventsTable.status, "ringing")))
+      .returning();
+    if (!claimed) return;
+    await tx.update(usersTable).set({
+      alarmsDismissed: sql`${usersTable.alarmsDismissed} + 1`,
+      alarmsTriggered: sql`${usersTable.alarmsTriggered} + 1`,
+    }).where(eq(usersTable.id, userId));
+  });
+  res.json({ success: true, donated: false, test: false, streak: await currentStreak(userId), message: "Alarm dismissed. Great job waking up!" });
 });
 
 router.post("/:id/snooze", async (req, res) => {
-  try {
-    const userId = (req as any).userId;
-    const id = parseInt(req.params.id);
-    const [alarm] = await db.select().from(alarmsTable).where(and(eq(alarmsTable.id, id), eq(alarmsTable.userId, userId))).limit(1);
-    if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }
-
-    // Increment snooze count
-    await db.update(alarmsTable).set({ snoozeCount: alarm.snoozeCount + 1 }).where(eq(alarmsTable.id, id));
-
-    let charityName = "Unknown";
-    if (alarm.charityId) {
-      const [charity] = await db.select().from(charitiesTable).where(eq(charitiesTable.id, alarm.charityId)).limit(1);
-      if (charity) charityName = charity.name;
-    } else {
-      // Pick random charity based on category
-      const cat = alarm.charityCategory === "hated" ? "hated" : "recommended";
-      const charities = await db.select().from(charitiesTable).where(eq(charitiesTable.category, cat));
-      if (charities.length > 0) {
-        const picked = charities[Math.floor(Math.random() * charities.length)];
-        charityName = picked.name;
-        await db.update(alarmsTable).set({ charityId: picked.id }).where(eq(alarmsTable.id, id));
-      }
-    }
-
-    const [charity] = alarm.charityId ? await db.select().from(charitiesTable).where(eq(charitiesTable.id, alarm.charityId!)).limit(1) : [{ id: 0, name: charityName }];
-
-    // Record donation
-    if (charity && charity.id) {
-      await db.insert(donationsTable).values({
-        userId,
-        alarmId: id,
-        charityId: charity.id,
-        charityName,
-        amount: alarm.donationAmount,
-        reason: "snooze",
-        status: "completed",
-      });
-
-      // Update user stats
-      const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
-      await db.update(usersTable).set({
-        totalDonated: user.totalDonated + alarm.donationAmount,
-        alarmsTriggered: user.alarmsTriggered + 1,
-      }).where(eq(usersTable.id, userId));
-
-      // Update charity total
-      await db.update(charitiesTable).set({ totalReceived: charity.totalReceived + alarm.donationAmount }).where(eq(charitiesTable.id, charity.id));
-    }
-
-    res.json({
-      success: true,
-      donated: true,
-      donationAmount: alarm.donationAmount,
-      charityName,
-      message: `$${alarm.donationAmount} donated to ${charityName}`,
-    });
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "Internal Server Error", message: String(e) });
+  const id = parseId(req.params.id, res);
+  if (id === null) return;
+  const userId = getUserId(req);
+  const alarm = await findOwnAlarm(id, userId);
+  if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }
+  if (!alarm.snoozeEnabled) {
+    res.status(400).json({ error: "Bad Request", message: "Snooze is disabled for this alarm" });
+    return;
   }
+  const charity = await resolveCharity(alarm);
+  if (!charity) {
+    res.status(503).json({ error: "Service Unavailable", message: "No charities available" });
+    return;
+  }
+  const now = new Date();
+  const ringAt = new Date(now.getTime() + minutes(alarm.snoozeDurationMinutes));
+
+  const body = parseBody(ringActionSchema, req, res);
+  if (!body) return;
+  const reportedRingAt = body.ringAt ? new Date(body.ringAt) : undefined;
+  const event = await findCurrentEvent(alarm, await userTimezone(userId), now, reportedRingAt);
+  if (!event) {
+    // Test alarm: show the flow without charging
+    res.json({
+      success: true, donated: false, test: true,
+      donationAmount: alarm.donationAmount, charityName: charity.name,
+      snoozeIndex: 1, snoozeLimit: MAX_SNOOZES, ringAt,
+      message: `Test snooze — a real one would donate $${alarm.donationAmount} to ${charity.name}`,
+    });
+    return;
+  }
+  if (event.snoozesUsed >= MAX_SNOOZES) {
+    res.status(409).json({ error: "Conflict", message: "No snoozes left — get up!" });
+    return;
+  }
+
+  const donation = await db.transaction(async (tx) => {
+    const [claimed] = await tx.update(alarmEventsTable).set({
+      snoozesUsed: sql`${alarmEventsTable.snoozesUsed} + 1`,
+      deadline: new Date(ringAt.getTime() + minutes(RING_WINDOW_MINUTES)),
+    }).where(and(
+      eq(alarmEventsTable.id, event.id),
+      eq(alarmEventsTable.status, "ringing"),
+      lt(alarmEventsTable.snoozesUsed, MAX_SNOOZES),
+    )).returning();
+    if (!claimed) return null;
+    await tx.update(alarmsTable).set({ snoozeCount: sql`${alarmsTable.snoozeCount} + 1` }).where(eq(alarmsTable.id, id));
+    return recordDonation(tx, { userId, alarmId: id, charity, amount: alarm.donationAmount, reason: "snooze",
+      rotate: alarm.charityCategory === "favorite" });
+  });
+  if (!donation) {
+    res.status(409).json({ error: "Conflict", message: "This alarm can no longer be snoozed" });
+    return;
+  }
+
+  res.json({
+    success: true,
+    donated: true,
+    test: false,
+    donationId: donation.id,
+    donationAmount: alarm.donationAmount,
+    charityName: charity.name,
+    snoozeIndex: event.snoozesUsed + 1,
+    snoozeLimit: MAX_SNOOZES,
+    ringAt,
+    message: `$${alarm.donationAmount} donated to ${charity.name}`,
+  });
 });
 
 export default router;

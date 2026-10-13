@@ -5,10 +5,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { goHome } from "@/lib/navigation";
+import { useAlarms } from "@/context/AlarmContext";
 
 export default function WokeUpScreen() {
   const insets = useSafeAreaInsets();
-  const { alarmName = "Morning Alarm", streak = "3" } =
+  const { donateVoluntarily } = useAlarms();
+  const { alarmName = "Morning Alarm", streak = "0" } =
     useLocalSearchParams<{ alarmName?: string; streak?: string }>();
 
   const scaleAnim = useRef(new Animated.Value(0.7)).current;
@@ -21,14 +24,33 @@ export default function WokeUpScreen() {
     ]).start();
   }, []);
 
+  const donate = async (amount: number) => {
+    try {
+      const donation = await donateVoluntarily(amount);
+      router.push({
+        pathname: "/alarm/receipt",
+        params: {
+          voluntary: "true",
+          amount: String(donation.amount),
+          fund: donation.charityName,
+          category: "Recommended",
+          reason: "Voluntary",
+          donationId: String(donation.id),
+        },
+      });
+    } catch (e: any) {
+      Alert.alert("Donation failed", e?.message ?? "Please try again.");
+    }
+  };
+
   const handleVoluntaryDonate = () => {
     Alert.alert(
       "Feeling generous?",
       "Choose an amount to donate voluntarily.",
       [
-        { text: "₪5", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=5") },
-        { text: "₪10", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=10") },
-        { text: "₪18", onPress: () => router.push("/alarm/receipt?voluntary=true&amount=18") },
+        { text: "$5", onPress: () => donate(5) },
+        { text: "$10", onPress: () => donate(10) },
+        { text: "$20", onPress: () => donate(20) },
         { text: "Cancel", style: "cancel" },
       ]
     );
@@ -85,7 +107,7 @@ export default function WokeUpScreen() {
       {/* Done */}
       <TouchableOpacity
         style={styles.doneBtn}
-        onPress={() => router.back()}
+        onPress={goHome}
         activeOpacity={0.8}
       >
         <Text style={styles.doneBtnText}>Close</Text>

@@ -5,6 +5,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import { closeScreen } from "@/lib/navigation";
 
 export default function SnoozeChargeScreen() {
   const insets = useSafeAreaInsets();
@@ -14,14 +15,17 @@ export default function SnoozeChargeScreen() {
     snoozeIndex = "1",
     snoozeLimit = "3",
     ringTime = "7:10 AM",
+    test = "false",
+    auto = "false",
   } = useLocalSearchParams<{
     amount?: string; fund?: string;
-    snoozeIndex?: string; snoozeLimit?: string; ringTime?: string;
+    snoozeIndex?: string; snoozeLimit?: string; ringTime?: string; test?: string; auto?: string;
   }>();
+  const isTest = test === "true";
 
   const current = parseInt(snoozeIndex, 10);
   const limit = parseInt(snoozeLimit, 10);
-  const nearLimit = current >= limit - 1;
+  const nearLimit = current >= limit;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 32 }]}>
@@ -31,12 +35,14 @@ export default function SnoozeChargeScreen() {
       </View>
 
       {/* Title */}
-      <Text style={styles.title}>Snoozed</Text>
-      <Text style={styles.subtitle}>Alarm will ring again at {ringTime}</Text>
+      <Text style={styles.title}>{auto === "true" ? "Time's up — snoozed" : "Snoozed"}</Text>
+      <Text style={styles.subtitle}>
+        {isTest ? `Test alarm — nothing charged. Rings again at ${ringTime}` : `Alarm will ring again at ${ringTime}`}
+      </Text>
 
       {/* Donation card */}
       <View style={styles.donationCard}>
-        <Text style={styles.donationAmount}>₪{amount}</Text>
+        <Text style={styles.donationAmount}>${amount}</Text>
         <Text style={styles.donationArrow}>→</Text>
         <View>
           <Text style={styles.donationFund}>{fund}</Text>
@@ -65,7 +71,7 @@ export default function SnoozeChargeScreen() {
         <View style={styles.warningCard}>
           <Feather name="alert-triangle" size={15} color="#FF9F0A" style={{ marginTop: 1 }} />
           <Text style={styles.warningText}>
-            One more snooze and your alarm will be marked as missed — a larger donation will be charged.
+            That was your last snooze. When the alarm rings again you have to get up — missing it donates double.
           </Text>
         </View>
       )}
@@ -83,7 +89,7 @@ export default function SnoozeChargeScreen() {
       {/* Action */}
       <TouchableOpacity
         style={styles.okBtn}
-        onPress={() => router.back()}
+        onPress={closeScreen}
         activeOpacity={0.8}
       >
         <Text style={styles.okBtnText}>Okay</Text>
