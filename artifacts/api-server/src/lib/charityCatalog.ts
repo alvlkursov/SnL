@@ -2,10 +2,12 @@ import { db } from "@workspace/db";
 import { charitiesTable } from "@workspace/db/schema";
 import { eq, inArray } from "drizzle-orm";
 
+export const PIGGY_BANK_NAME = "Piggy bank";
+
 interface CatalogEntry {
   name: string;
   description: string;
-  category: "recommended" | "general" | "hated";
+  category: "recommended" | "general" | "hated" | "piggy";
   cause: string;
   website?: string;
   isHot?: boolean;
@@ -50,12 +52,17 @@ const CATALOG: CatalogEntry[] = [
   { name: "Make-A-Wish", description: "Grants wishes to children with critical illnesses.", category: "general", cause: "Children", website: "https://wish.org" },
   { name: "Team Rubicon", description: "Veterans who serve communities after disasters.", category: "general", cause: "Disaster relief", website: "https://teamrubicon.org" },
 
-  // Hated (motivation by aversion)
-  { name: "Anonymous Corp Lobby", description: "Lobbying for corporate interests.", category: "hated", cause: "Lobbying" },
-  { name: "Anti-Vax Foundation", description: "Spreads anti-vaccine propaganda.", category: "hated", cause: "Misinformation" },
-  { name: "Flat Earth Society", description: "Promotes pseudoscientific theories.", category: "hated", cause: "Misinformation" },
-  { name: "Spam Political PAC", description: "A spammy political action committee.", category: "hated", cause: "Politics" },
-  { name: "Fossil Fuel Lobby", description: "Lobbying for the oil and gas industry.", category: "hated", cause: "Lobbying" },
+  // Rivals (motivation by aversion): real, legitimate 501(c)(3) charities from opposite sides of
+  // well-known debates, so everyone can find one they'd hate to fund. Category key stays 'hated'.
+  { name: "NRA Foundation", description: "Funds firearms training, marksmanship and hunting education programs.", category: "hated", cause: "Gun debate", website: "https://www.nrafoundation.org", legacyNames: ["Anonymous Corp Lobby"] },
+  { name: "Brady Center to Prevent Gun Violence", description: "Campaigns and litigates for stricter gun-safety laws.", category: "hated", cause: "Gun debate", website: "https://www.bradyunited.org", legacyNames: ["Anti-Vax Foundation"] },
+  { name: "The Heritage Foundation", description: "Conservative think tank shaping public policy.", category: "hated", cause: "Politics", website: "https://www.heritage.org", legacyNames: ["Flat Earth Society"] },
+  { name: "Center for American Progress", description: "Progressive think tank shaping public policy.", category: "hated", cause: "Politics", website: "https://www.americanprogress.org", legacyNames: ["Spam Political PAC"] },
+  { name: "The Federalist Society", description: "Network of conservative and libertarian lawyers and judges.", category: "hated", cause: "Law", website: "https://fedsoc.org", legacyNames: ["Fossil Fuel Lobby"] },
+  { name: "ACLU Foundation", description: "Litigates for civil liberties, often in controversial cases.", category: "hated", cause: "Law", website: "https://www.aclu.org" },
+
+  // System destination, never listed: snoozes from alarms set to "decide later"
+  { name: PIGGY_BANK_NAME, description: "Your piggy bank: decide later which charity gets it.", category: "piggy", cause: "Piggy bank" },
 ];
 
 /** Inserts missing catalog charities and refreshes existing ones (matched by name or legacy name). */

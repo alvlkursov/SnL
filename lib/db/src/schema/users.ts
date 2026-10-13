@@ -12,6 +12,7 @@ export const usersTable = pgTable("users", {
   totalDonated: real("total_donated").notNull().default(0),
   alarmsTriggered: integer("alarms_triggered").notNull().default(0),
   alarmsDismissed: integer("alarms_dismissed").notNull().default(0),
+  statsResetAt: timestamp("stats_reset_at"), // stats only count activity after this
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { charitiesTable, userFavoriteCharitiesTable } from "@workspace/db/schema";
-import { and, asc, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, notInArray } from "drizzle-orm";
 import { authMiddleware, getUserId } from "../lib/auth.js";
 import { syncCharityCatalog } from "../lib/charityCatalog.js";
 import { parseBody, setFavoritesSchema } from "../lib/validation.js";
@@ -36,7 +36,7 @@ router.put("/favorites", authMiddleware, async (req, res) => {
   }
   const valid = ids.length
     ? await db.select({ id: charitiesTable.id }).from(charitiesTable)
-      .where(and(inArray(charitiesTable.id, ids), ne(charitiesTable.category, "hated")))
+      .where(and(inArray(charitiesTable.id, ids), notInArray(charitiesTable.category, ["hated", "piggy"])))
     : [];
   if (valid.length !== ids.length) {
     res.status(400).json({ error: "Bad Request", message: "Unknown charity" });
@@ -51,7 +51,7 @@ router.put("/favorites", authMiddleware, async (req, res) => {
   res.json(await favoritesOf(userId));
 });
 
-// ?category=recommended | hated | catalog (everything except hated) | favorite (needs auth)
+// ?category=recommended | hated | catalog (everything except rivals) | favorite (needs auth)
 router.get("/", async (req, res, next) => {
   const category = String(req.query.category ?? "");
   if (category === "favorite") {
@@ -65,11 +65,12 @@ router.get("/", async (req, res, next) => {
     return;
   }
   const query = db.select().from(charitiesTable);
+  // The piggy bank is a system destination, never a pickable charity
   const charities = category === "catalog"
-    ? await query.where(ne(charitiesTable.category, "hated")).orderBy(asc(charitiesTable.cause), asc(charitiesTable.name))
-    : category
+    ? await query.where(notInArray(charitiesTable.category, ["hated", "piggy"])).orderBy(asc(charitiesTable.cause), asc(charitiesTable.name))
+    : category && category !== "piggy"
       ? await query.where(eq(charitiesTable.category, category)).orderBy(desc(charitiesTable.isHot), asc(charitiesTable.name))
-      : await query.orderBy(asc(charitiesTable.name));
+      : await query.where(notInArray(charitiesTable.category, ["piggy"])).orderBy(asc(charitiesTable.name));
   res.json(charities);
 });
 

@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { alarmEventsTable, charitiesTable, donationsTable, usersTable } from "@workspace/db/schema";
-import { desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { currentStreak } from "../lib/events.js";
 import { authMiddleware, getUserId } from "../lib/auth.js";
 import { parseBody, voluntaryDonationSchema } from "../lib/validation.js";
 import { recordDonation, resolveCharity } from "../lib/donations.js";
+import { stakesBlocked } from "../lib/billing.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -22,6 +23,8 @@ router.post("/", async (req, res) => {
   const body = parseBody(voluntaryDonationSchema, req, res);
   if (!body) return;
   const userId = getUserId(req);
+  const blocked = await stakesBlocked(userId);
+  if (blocked) { res.status(402).json({ error: "Payment Required", ...blocked }); return; }
   const charity = body.charityId
     ? (await db.select().from(charitiesTable).where(eq(charitiesTable.id, body.charityId)).limit(1))[0]
     : await resolveCharity({ charityId: null, charityCategory: "favorite", userId });
@@ -35,16 +38,19 @@ router.post("/", async (req, res) => {
 // Test rings (outside a real alarm time) are not recorded and don't count.
 router.get("/stats", async (req, res) => {
   const userId = getUserId(req);
+  // "Reset stats" only hides older activity; money records are never deleted
+  const [user] = await db.select({ statsResetAt: usersTable.statsResetAt }).from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  const since = user?.statsResetAt ?? new Date(0);
   const [events] = await db.select({
     dismissed: sql<number>`count(*) filter (where ${alarmEventsTable.status} = 'dismissed')`.mapWith(Number),
     missed: sql<number>`count(*) filter (where ${alarmEventsTable.status} = 'missed')`.mapWith(Number),
     onTime: sql<number>`count(*) filter (where ${alarmEventsTable.status} = 'dismissed' and ${alarmEventsTable.snoozesUsed} = 0)`.mapWith(Number),
     snoozes: sql<number>`coalesce(sum(${alarmEventsTable.snoozesUsed}), 0)`.mapWith(Number),
-  }).from(alarmEventsTable).where(eq(alarmEventsTable.userId, userId));
+  }).from(alarmEventsTable).where(and(eq(alarmEventsTable.userId, userId), gt(alarmEventsTable.scheduledAt, since)));
   const [money] = await db.select({
     total: sql<number>`coalesce(sum(${donationsTable.amount}), 0)`.mapWith(Number),
     count: sql<number>`count(*)`.mapWith(Number),
-  }).from(donationsTable).where(eq(donationsTable.userId, userId));
+  }).from(donationsTable).where(and(eq(donationsTable.userId, userId), gt(donationsTable.createdAt, since)));
 
   const resolved = events.dismissed + events.missed;
   res.json({
@@ -60,14 +66,13 @@ router.get("/stats", async (req, res) => {
   });
 });
 
-// Wipes the user's ring history and donation records (useful after testing).
-// TODO(payments): once real charges exist, keep paid donations and only hide them from stats.
+// Starts the stats over (useful after testing). Ring history is cleared; donations stay on the
+// books because they are (or will be) real charges, they just stop counting in the stats.
 router.post("/reset", async (req, res) => {
   const userId = getUserId(req);
   await db.transaction(async (tx) => {
     await tx.delete(alarmEventsTable).where(eq(alarmEventsTable.userId, userId));
-    await tx.delete(donationsTable).where(eq(donationsTable.userId, userId));
-    await tx.update(usersTable).set({ totalDonated: 0, alarmsTriggered: 0, alarmsDismissed: 0 })
+    await tx.update(usersTable).set({ statsResetAt: new Date(), totalDonated: 0, alarmsTriggered: 0, alarmsDismissed: 0 })
       .where(eq(usersTable.id, userId));
   });
   res.json({ success: true });

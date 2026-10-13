@@ -5,3 +5,4 @@ export * from "./donations";
 export * from "./sessions";
 export * from "./alarmEvents";
 export * from "./passwordResets";
+export * from "./billing";

@@ -13,7 +13,11 @@ export const donationsTable = pgTable("donations", {
   charityName: text("charity_name").notNull(),
   amount: real("amount").notNull(),
   reason: text("reason").notNull(), // 'snooze' | 'missed' | 'voluntary'
-  status: text("status").notNull().default("completed"), // 'pending' | 'completed' | 'failed'
+  // 'pending': owed, on this month's bill · 'billed': charged, waiting for the monthly payout ·
+  // 'sent': paid out to the charity · 'completed': legacy rows from before billing existed
+  status: text("status").notNull().default("pending"),
+  invoiceId: integer("invoice_id"), // the monthly bill that charged it
+  payoutId: integer("payout_id"), // the transfer that delivered it to the charity
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

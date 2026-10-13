@@ -13,7 +13,7 @@ export const alarmsTable = pgTable("alarms", {
   isEnabled: boolean("is_enabled").notNull().default(true),
   donationAmount: real("donation_amount").notNull(),
   charityId: integer("charity_id").references(() => charitiesTable.id),
-  charityCategory: text("charity_category"), // 'favorite' | 'recommended' | 'hated'
+  charityCategory: text("charity_category"), // 'favorite' | 'recommended' | 'hated' (rivals) | 'piggy' (decide later)
   confirmationMethod: text("confirmation_method").notNull().default("button"), // 'button' | 'math' | 'shake' | 'qr'
   snoozeEnabled: boolean("snooze_enabled").notNull().default(true),
   snoozeCount: integer("snooze_count").notNull().default(0),

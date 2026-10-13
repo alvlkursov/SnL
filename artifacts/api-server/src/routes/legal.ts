@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { APP_NAME, CONTACT_EMAIL, POLICY_EFFECTIVE_DATE, PUBLISHER_NAME } from "../lib/legal.js";
+import { db } from "@workspace/db";
+import { payoutsTable } from "@workspace/db/schema";
+import { desc, eq } from "drizzle-orm";
 
 // Public pages linked from the app and from the Google Play listing.
 const router = Router();
 
-function page(title: string, body: string): string {
+export function page(title: string, body: string): string {
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -25,6 +28,18 @@ function page(title: string, body: string): string {
   button { font: inherit; font-weight: 600; padding: 12px; border-radius: 10px; border: 0; background: #FF453A; color: #fff; cursor: pointer; }
   button:disabled { opacity: .6; cursor: default; }
   #result { min-height: 1.6em; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 15px; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #2A2A40; vertical-align: top; }
+  th { color: #8888AA; font-weight: 600; font-size: 13px; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #2A2A40; }
+  .ok { background: #30D15833; color: #30D158; } .bad { background: #FF453A33; color: #FF453A; }
+  form.inline { display: flex; gap: 6px; flex-wrap: wrap; background: none; padding: 0; border: 0; margin: 0; }
+  form.inline input { padding: 6px 8px; font-size: 14px; flex: 1; min-width: 140px; }
+  form.inline button, .btn { padding: 6px 12px; font-size: 14px; background: #FF5A3C; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .card { background: #1C1C2E; border: 1px solid #2A2A40; border-radius: 12px; padding: 12px; }
+  .card b { display: block; font-size: 22px; }
 </style>
 </head>
 <body><main>${body}</main></body>
@@ -144,5 +159,23 @@ form.addEventListener("submit", async (e) => {
 
 router.get("/privacy", (_req, res) => { res.type("html").send(privacyHtml); });
 router.get("/delete-account", (_req, res) => { res.type("html").send(deleteAccountHtml); });
+
+// Public proof of where the money went: every payout we sent, with the charity's receipt
+router.get("/transparency", async (_req, res) => {
+  const sent = await db.select().from(payoutsTable).where(eq(payoutsTable.status, "sent")).orderBy(desc(payoutsTable.sentAt)).limit(500);
+  const esc = (v: unknown) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
+  const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+  const batches = new Map<string, typeof sent>();
+  for (const p of sent) batches.set(p.batch, [...(batches.get(p.batch) ?? []), p]);
+  const sections = [...batches].map(([batch, rows]) => `
+<h2>${esc(batch)} · ${usd(rows.reduce((s, r) => s + r.amountCents, 0))}</h2>
+<table><tr><th>Charity</th><th class="num">Amount</th><th>Receipt</th></tr>
+${rows.map(r => `<tr><td>${esc(r.charityName)}${r.note ? `<br><span class="muted">${esc(r.note)}</span>` : ""}</td><td class="num">${usd(r.amountCents)}</td>
+<td>${r.receiptUrl ? `<a href="${esc(r.receiptUrl)}" target="_blank" rel="noopener">View</a>` : "—"}</td></tr>`).join("")}</table>`).join("");
+  res.type("html").send(page("Where the money went", `
+<h1>Where the money went</h1>
+<p class="muted">Every month we pass on all donations from ${APP_NAME} to the charities our users chose, and post each charity's receipt here.</p>
+${sections || "<p>No payouts yet — the first one goes out after the first monthly billing.</p>"}`));
+});
 
 export default router;

@@ -8,6 +8,7 @@ import { findCurrentEvent, currentStreak, catchUpAlarms } from "../lib/events.js
 import { localParts } from "../lib/time.js";
 import { resolveCharity, recordDonation } from "../lib/donations.js";
 import { MAX_SNOOZES, RING_WINDOW_MINUTES, minutes } from "../lib/rules.js";
+import { stakesBlocked } from "../lib/billing.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -30,6 +31,10 @@ router.get("/", async (req, res) => {
 router.post("/", async (req, res) => {
   const body = parseBody(createAlarmSchema, req, res);
   if (!body) return;
+  if (body.isEnabled) {
+    const blocked = await stakesBlocked(getUserId(req));
+    if (blocked) { res.status(402).json({ error: "Payment Required", ...blocked }); return; }
+  }
   const [alarm] = await db.insert(alarmsTable).values({
     ...body,
     userId: getUserId(req),
@@ -45,6 +50,14 @@ router.put("/:id", async (req, res) => {
   if (!body) return;
   const { days, ...rest } = body;
   const changes = { ...rest, ...(days ? { days: JSON.stringify(days) } : {}) };
+  // Switching an alarm on puts money on the line: needs a card and no unpaid bill
+  if (body.isEnabled === true) {
+    const current = await findOwnAlarm(id, getUserId(req));
+    if (current && !current.isEnabled) {
+      const blocked = await stakesBlocked(getUserId(req));
+      if (blocked) { res.status(402).json({ error: "Payment Required", ...blocked }); return; }
+    }
+  }
   if (Object.keys(changes).length === 0) {
     const alarm = await findOwnAlarm(id, getUserId(req));
     if (!alarm) { res.status(404).json({ error: "Not Found" }); return; }

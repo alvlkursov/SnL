@@ -7,7 +7,7 @@ export const charitiesTable = pgTable("charities", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description").notNull(),
-  category: text("category").notNull(), // 'recommended' (featured partners) | 'general' (catalog) | 'hated'
+  category: text("category").notNull(), // 'recommended' (featured partners) | 'general' (catalog) | 'hated' (rivals) | 'piggy' (system: the piggy bank)
   cause: text("cause"), // e.g. 'Health', 'Animals' — groups the catalog
   website: text("website"),
   logoUrl: text("logo_url"),

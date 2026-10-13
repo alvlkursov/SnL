@@ -5,6 +5,8 @@ import alarmsRouter from "./alarms";
 import charitiesRouter from "./charities";
 import donationsRouter from "./donations";
 import legalRouter from "./legal";
+import billingRouter from "./billing";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -13,6 +15,8 @@ router.use("/auth", authRouter);
 router.use("/alarms", alarmsRouter);
 router.use("/charities", charitiesRouter);
 router.use("/donations", donationsRouter);
+router.use("/billing", billingRouter);
+router.use("/admin", adminRouter);
 router.use(legalRouter);
 
 export default router;

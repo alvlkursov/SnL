@@ -3,12 +3,14 @@ import {
   charitiesTable, donationsTable, usersTable, alarmsTable, userFavoriteCharitiesTable, type Alarm, type Charity,
 } from "@workspace/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { PIGGY_BANK_NAME } from "./charityCatalog.js";
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 /**
  * The alarm's chosen charity, or a random one from its category.
- * 'favorite' picks from the user's favorites (falling back to featured partners if they have none).
+ * 'favorite' picks from the user's favorites (falling back to featured partners if they have none);
+ * 'piggy' parks the money in the user's piggy bank until they pick a charity.
  */
 export async function resolveCharity(
   alarm: Pick<Alarm, "charityId" | "charityCategory" | "userId">,
@@ -17,6 +19,7 @@ export async function resolveCharity(
     const [charity] = await db.select().from(charitiesTable).where(eq(charitiesTable.id, alarm.charityId)).limit(1);
     if (charity) return charity;
   }
+  if (alarm.charityCategory === "piggy") return piggyBank();
   let candidates: Charity[] = [];
   if (alarm.charityCategory === "favorite") {
     candidates = (await db.select({ charity: charitiesTable })
@@ -31,14 +34,25 @@ export async function resolveCharity(
   return candidates[Math.floor(Math.random() * candidates.length)];
 }
 
-/** Records a donation and updates user/charity totals. Run inside a transaction. */
+/** The system "charity" row that stands for the piggy bank. */
+export async function piggyBank(): Promise<Charity | undefined> {
+  const [row] = await db.select().from(charitiesTable).where(eq(charitiesTable.category, "piggy")).limit(1);
+  if (row) return row;
+  const [created] = await db.insert(charitiesTable).values({
+    name: PIGGY_BANK_NAME, description: "Your piggy bank", category: "piggy", cause: "Piggy bank",
+  }).returning();
+  return created;
+}
+
+/** Records a donation owed on this month's bill and updates user/charity totals. Run inside a transaction. */
 export async function recordDonation(tx: Tx, params: {
   userId: number;
   alarmId: number | null;
   charity: Charity;
   amount: number;
-  reason: "snooze" | "missed" | "voluntary";
+  reason: "snooze" | "missed" | "voluntary" | "piggy";
   rotate?: boolean;
+  status?: "pending" | "billed"; // 'billed' for money that was already charged (from the piggy bank)
 }) {
   const [donation] = await tx.insert(donationsTable).values({
     userId: params.userId,
@@ -47,7 +61,7 @@ export async function recordDonation(tx: Tx, params: {
     charityName: params.charity.name,
     amount: params.amount,
     reason: params.reason,
-    status: "completed", // TODO(payments): 'pending' until the card charge succeeds
+    status: params.status ?? "pending",
   }).returning();
   await tx.update(usersTable).set({
     totalDonated: sql`${usersTable.totalDonated} + ${params.amount}`,
